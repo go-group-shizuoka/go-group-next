@@ -1,11 +1,15 @@
 "use client";
 // ==================== ログイン画面 ====================
-// ダミーアカウントで動作確認できる。本番ではSupabase Authに置き換え予定。
+// Supabase Auth を優先し、未登録の場合はダミー認証にフォールバック。
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_ACCOUNTS, DUMMY_FACILITIES } from "@/lib/dummy-data";
+import { authSignIn } from "@/lib/supabase";
 import type { UserSession } from "@/types";
+
+// セッション有効時間: 8時間
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,28 +23,35 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    // 少し待ってからログイン処理（UXのため）
-    await new Promise((r) => setTimeout(r, 400));
+    // ① Supabase Auth でのログインを試みる
+    let authOk = false;
+    const { error: authError } = await authSignIn(username, password);
+    if (!authError) authOk = true;
 
+    // ② ダミーアカウント照合（Supabase未登録ユーザー or 開発環境用）
     const account = DUMMY_ACCOUNTS.find(
       (a) => a.username === username && a.password === password
     );
 
-    if (!account) {
+    if (!authOk && !account) {
       setError("ユーザーIDまたはパスワードが正しくありません");
       setLoading(false);
       return;
     }
 
-    // セッション情報をlocalStorageに保存
-    const session: UserSession = {
+    // ダミーアカウントが見つからなかった場合（Supabase Authのみ）はusername="admin"扱い
+    const matched = account ?? DUMMY_ACCOUNTS[0];
+
+    // セッション情報をlocalStorageに保存（有効期限付き）
+    const session: UserSession & { expires_at: number } = {
       id: crypto.randomUUID(),
       org_id: "org_1",
-      facility_id: account.facility_id ?? "",
-      staff_id: account.staff_id ?? "",
-      name: account.name,
-      role: account.role,
-      selected_facility_id: account.facility_id ?? DUMMY_FACILITIES[0].id,
+      facility_id: matched.facility_id ?? "",
+      staff_id: matched.staff_id ?? "",
+      name: matched.name,
+      role: matched.role,
+      selected_facility_id: matched.facility_id ?? DUMMY_FACILITIES[0].id,
+      expires_at: Date.now() + SESSION_TTL_MS,
     };
     localStorage.setItem("gg_session", JSON.stringify(session));
 

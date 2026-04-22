@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord } from "@/lib/supabase";
+import { saveRecord, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, MessageRecord } from "@/types";
 
 function genId() { return crypto.randomUUID(); }
@@ -41,18 +41,40 @@ export default function MessagesPage() {
   const [newBody, setNewBody] = useState("");
   const [reply, setReply] = useState("");
   const [view, setView] = useState<"list" | "thread" | "new">("list");
+  const [loadingDB, setLoadingDB] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // セッション読み込み
   useEffect(() => {
     const raw = localStorage.getItem("gg_session");
     if (raw) setSession(JSON.parse(raw));
   }, []);
+
+  // Supabaseからメッセージを読み込む（あればDBのデータを優先）
+  useEffect(() => {
+    if (!session) return;
+    setLoadingDB(true);
+    fetchByFacility<MessageRecord>(
+      "ng_messages",
+      session.org_id,
+      session.selected_facility_id
+    ).then((rows) => {
+      // DBにデータがあれば上書き、なければダミーデータを維持
+      if (rows.length > 0) setMessages(rows);
+      setLoadingDB(false);
+    });
+  }, [session]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selChildId, messages]);
 
   if (!session) return null;
+  if (loadingDB) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
+      <span className="spinner" />
+    </div>
+  );
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
   const children = DUMMY_CHILDREN.filter((c) => c.active && c.facility_id === session.selected_facility_id);

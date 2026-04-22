@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord } from "@/lib/supabase";
+import { saveRecord, fetchByDate } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
 
 function nowHHMM() {
@@ -23,15 +23,47 @@ export default function AttendancePage() {
   const [selChild, setSelChild] = useState<string | null>(null);
   const [inputTemp, setInputTemp] = useState("");
   const [inputTime, setInputTime] = useState(nowHHMM());
+  const [loadingDB, setLoadingDB] = useState(false);
 
+  // セッション読み込み
   useEffect(() => {
     const raw = localStorage.getItem("gg_session");
     if (raw) setSession(JSON.parse(raw));
   }, []);
 
+  // Supabaseから本日の入退室記録を読み込む
+  useEffect(() => {
+    if (!session) return;
+    setLoadingDB(true);
+    fetchByDate<AttendanceRecord>(
+      "ng_attendance",
+      session.org_id,
+      session.selected_facility_id,
+      todayISO()
+    ).then((rows) => {
+      if (rows.length > 0) {
+        const map: Record<string, { arrive?: string; depart?: string; temp?: string }> = {};
+        rows.forEach((r) => {
+          map[r.child_id] = {
+            arrive: r.arrive_time ?? undefined,
+            depart: r.depart_time ?? undefined,
+            temp: r.temperature ?? undefined,
+          };
+        });
+        setRecords(map);
+      }
+      setLoadingDB(false);
+    });
+  }, [session]);
+
   if (!session) return null;
 
   const todayDow = getTodayDow();
+  if (loadingDB) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
+      <span className="spinner" />
+    </div>
+  );
   const todayChildren = DUMMY_CHILDREN.filter(
     (c) =>
       c.active &&

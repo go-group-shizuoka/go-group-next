@@ -46,6 +46,107 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
+/* ===================== レスポンシブ：メインコンテンツ ===================== */
+/* PCではサイドバー(240px)分ずらす、スマホでは0 */
+.main-content {
+  margin-left: 240px;
+}
+@media (max-width: 767px) {
+  .main-content {
+    margin-left: 0;
+    padding: 16px 12px 90px !important;
+  }
+}
+
+/* テーブルのスマホ対応：横スクロール */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* スマホ用タップしやすいボタン */
+@media (max-width: 767px) {
+  .btn-primary, .btn-secondary {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+  .form-input {
+    min-height: 44px;
+    font-size: 16px; /* iOSのズーム防止 */
+  }
+}
+
+/* グリッドのスマホ対応 */
+.grid-mobile-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .grid-mobile-stack {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* data-tableのスマホ対応 */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th {
+  padding: 10px 12px;
+  background: #f8fafc;
+  text-align: left;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 11px;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #f8fafc; }
+
+/* ===================== 印刷CSS ===================== */
+@media print {
+  /* サイドバー・ボトムナビ・ボタン類を非表示 */
+  aside, nav, .main-content > *:not(#print-area),
+  button, .btn-primary, .btn-secondary,
+  [class*="md:hidden"], [class*="hidden"] {
+    display: none !important;
+  }
+
+  /* 印刷エリアを全幅に */
+  body { background: white !important; font-size: 12px; }
+  .main-content { margin-left: 0 !important; padding: 0 !important; }
+
+  #print-area {
+    display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  /* 改ページ制御 */
+  h2, h3, .section-title { page-break-after: avoid; }
+  table { page-break-inside: avoid; }
+
+  /* 印刷ヘッダー */
+  #print-area::before {
+    content: "GO GROUP 放課後等デイサービス";
+    display: block;
+    font-size: 10px;
+    color: #64748b;
+    text-align: right;
+    margin-bottom: 8px;
+  }
+}
+
 /* ボタン */
 .btn-primary {
   background: var(--gg-blue);

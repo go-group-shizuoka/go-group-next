@@ -1,17 +1,18 @@
 "use client";
 // ==================== 認証済みエリアのレイアウト ====================
-// サイドバー + メインコンテンツ領域。未ログイン時はログインへリダイレクト。
+// サイドバー + メインコンテンツ領域。未ログイン・セッション期限切れ時はログインへ。
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import { authSignOut } from "@/lib/supabase";
 import type { UserSession } from "@/types";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
-  // セッションチェック（未ログイン→ログインへ）
+  // セッションチェック（未ログイン・期限切れ→ログインへ）
   useEffect(() => {
     const raw = localStorage.getItem("gg_session");
     if (!raw) {
@@ -19,7 +20,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      JSON.parse(raw) as UserSession;
+      const session = JSON.parse(raw) as UserSession & { expires_at?: number };
+      // 有効期限チェック
+      if (session.expires_at && Date.now() > session.expires_at) {
+        localStorage.removeItem("gg_session");
+        authSignOut(); // Supabase Authもサインアウト
+        router.replace("/login");
+        return;
+      }
       setReady(true);
     } catch {
       router.replace("/login");
@@ -50,12 +58,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main
         style={{
           flex: 1,
-          marginLeft: "240px",          // サイドバー分オフセット
-          padding: "24px",
+          padding: "20px 16px",
           minHeight: "100vh",
-          paddingBottom: "80px",        // スマホのボトムナビ分
+          paddingBottom: "80px",
         }}
-        className="md:ml-[240px] ml-0"
+        className="main-content"
       >
         {children}
       </main>

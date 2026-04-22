@@ -144,6 +144,23 @@ CREATE TABLE IF NOT EXISTS public.ng_daily_reports (
 ALTER TABLE public.ng_daily_reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anon_all" ON public.ng_daily_reports FOR ALL USING (true) WITH CHECK (true);
 
+-- 9. 送迎記録
+CREATE TABLE IF NOT EXISTS public.ng_transport (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  facility_id TEXT NOT NULL,
+  child_id TEXT NOT NULL,
+  child_name TEXT,
+  date DATE NOT NULL,
+  route TEXT NOT NULL,       -- '来所' or '帰所'
+  status TEXT DEFAULT '待機中', -- '待機中' | '出発' | '到着済' | '欠席'
+  time TEXT,                 -- HH:MM
+  recorded_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.ng_transport ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON public.ng_transport FOR ALL USING (true) WITH CHECK (true);
+
 -- 初期データ: GO GROUP法人
 INSERT INTO public.organizations (id, name, plan)
 VALUES ('org_1', 'GO GROUP', 'standard')

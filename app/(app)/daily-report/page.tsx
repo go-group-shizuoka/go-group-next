@@ -1,18 +1,22 @@
 "use client";
 // ==================== 業務日報 ====================
-// 入退室・活動記録を自動集計。印刷対応。
+// 入退室・活動記録を自動集計。Supabase保存・読み込み対応。印刷対応。
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES, DUMMY_STAFF } from "@/lib/dummy-data";
-import type { UserSession } from "@/types";
+import { saveRecord, fetchByFacility } from "@/lib/supabase";
+import type { UserSession, DailyReport } from "@/types";
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function getTodayDow() { return ["日","月","火","水","木","金","土"][new Date().getDay()]; }
+function genId() { return crypto.randomUUID(); }
 
 type ReportActivity = { time: string; title: string; detail: string; staff: string };
 type ReportStatus = "下書き" | "確認中" | "承認済";
 
+// ローカルで扱う詳細型（Supabaseと変換する）
 type DailyReportData = {
+  id: string;
   date: string;
   facility_id: string;
   weather: string;
@@ -29,11 +33,32 @@ type DailyReportData = {
 
 const WEATHER_OPTIONS = ["晴れ","曇り","雨","雪","晴れ時々曇り","曇り時々雨"];
 
+// Supabase行 → ローカル型に変換
+function toLocal(r: DailyReport): DailyReportData {
+  return {
+    id: r.id,
+    date: r.date,
+    facility_id: r.facility_id,
+    weather: r.weather ?? "晴れ",
+    author: r.author,
+    child_count: r.child_count ?? 0,
+    staff_count: r.staff_count ?? 0,
+    activities: r.activities ? JSON.parse(r.activities) : [],
+    incident: r.incident ?? "",
+    parent_note: r.parent_note ?? "",
+    tomorrow_note: r.tomorrow_note ?? "",
+    manager_note: r.manager_note ?? "",
+    status: r.status,
+  };
+}
+
 export default function DailyReportPage() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [selDate, setSelDate] = useState(todayISO());
   const [report, setReport] = useState<DailyReportData | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingDB, setLoadingDB] = useState(false);
   const [reports, setReports] = useState<DailyReportData[]>([]);
   const [view, setView] = useState<"list" | "edit" | "view">("list");
 
@@ -42,12 +67,31 @@ export default function DailyReportPage() {
     if (raw) setSession(JSON.parse(raw));
   }, []);
 
+  // Supabaseから日報一覧を読み込む
+  useEffect(() => {
+    if (!session) return;
+    setLoadingDB(true);
+    fetchByFacility<DailyReport>(
+      "ng_daily_reports",
+      session.org_id,
+      session.selected_facility_id
+    ).then((rows) => {
+      setReports(rows.map(toLocal));
+      setLoadingDB(false);
+    });
+  }, [session]);
+
   if (!session) return null;
+  if (loadingDB) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
+      <span className="spinner" />
+    </div>
+  );
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
   const todayDow = getTodayDow();
 
-  // 今日の来所予定児童（曜日）
+  // 今日の来所予定児童
   const todayChildren = DUMMY_CHILDREN.filter(
     (c) => c.active && c.facility_id === session.selected_facility_id && (c.use_days ?? []).includes(todayDow)
   );
@@ -58,6 +102,7 @@ export default function DailyReportPage() {
     const existing = reports.find((r) => r.date === selDate && r.facility_id === session.selected_facility_id);
     if (existing) { setReport(existing); setView("edit"); return; }
     const newReport: DailyReportData = {
+      id: genId(),
       date: selDate,
       facility_id: session.selected_facility_id,
       weather: "晴れ",
@@ -80,18 +125,42 @@ export default function DailyReportPage() {
     setView("edit");
   };
 
-  const handleSave = (status: ReportStatus) => {
+  const handleSave = async (status: ReportStatus) => {
     if (!report) return;
+    setSaving(true);
     const updated = { ...report, status };
-    setReports((p) => [...p.filter((r) => !(r.date === updated.date && r.facility_id === updated.facility_id)), updated]);
+
+    // Supabaseに保存
+    await saveRecord("ng_daily_reports", {
+      id: updated.id,
+      org_id: session.org_id,
+      facility_id: session.selected_facility_id,
+      date: updated.date,
+      weather: updated.weather,
+      author: updated.author,
+      child_count: updated.child_count,
+      staff_count: updated.staff_count,
+      activities: JSON.stringify(updated.activities),
+      incident: updated.incident,
+      parent_note: updated.parent_note,
+      tomorrow_note: updated.tomorrow_note,
+      manager_note: updated.manager_note,
+      status: updated.status,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    setReports((p) => [
+      updated,
+      ...p.filter((r) => !(r.date === updated.date && r.facility_id === updated.facility_id)),
+    ]);
     setReport(updated);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaving(false);
+    setTimeout(() => setSaved(false), 2500);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const updActivity = (i: number, key: keyof ReportActivity, val: string) => {
     if (!report) return;
@@ -130,12 +199,18 @@ export default function DailyReportPage() {
             <button className="btn-secondary" onClick={handlePrint} style={{ padding: "7px 14px", fontSize: 12 }}>🖨️ 印刷</button>
             {isEdit && (
               <>
-                <button className="btn-secondary" onClick={() => handleSave("下書き")} style={{ padding: "7px 14px", fontSize: 12 }}>一時保存</button>
-                <button className="btn-primary" onClick={() => handleSave("確認中")} style={{ padding: "7px 14px", fontSize: 12 }}>提出する</button>
+                <button className="btn-secondary" onClick={() => handleSave("下書き")} disabled={saving} style={{ padding: "7px 14px", fontSize: 12 }}>
+                  {saving ? "保存中..." : "一時保存"}
+                </button>
+                <button className="btn-primary" onClick={() => handleSave("確認中")} disabled={saving} style={{ padding: "7px 14px", fontSize: 12 }}>
+                  提出する
+                </button>
               </>
             )}
             {!isEdit && session.role === "manager" && report.status === "確認中" && (
-              <button className="btn-primary" onClick={() => handleSave("承認済")} style={{ padding: "7px 14px", fontSize: 12, background: "#059669" }}>✓ 承認</button>
+              <button className="btn-primary" onClick={() => handleSave("承認済")} disabled={saving} style={{ padding: "7px 14px", fontSize: 12, background: "#059669" }}>
+                ✓ 承認
+              </button>
             )}
           </div>
         </div>
@@ -177,9 +252,7 @@ export default function DailyReportPage() {
           <Section title="来所児童一覧（自動集計）">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {todayChildren.map((c) => (
-                <span key={c.id} className="badge badge-blue" style={{ fontSize: 12 }}>
-                  {c.name} ({c.grade})
-                </span>
+                <span key={c.id} className="badge badge-blue" style={{ fontSize: 12 }}>{c.name} ({c.grade})</span>
               ))}
               {todayChildren.length === 0 && <span style={{ color: "#94a3b8", fontSize: 13 }}>来所予定なし</span>}
             </div>
@@ -281,6 +354,10 @@ export default function DailyReportPage() {
   }
 
   // ===== 一覧画面 =====
+  const facReports = reports
+    .filter((r) => r.facility_id === session.selected_facility_id)
+    .sort((a, b) => b.date > a.date ? 1 : -1);
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -298,13 +375,13 @@ export default function DailyReportPage() {
             <input className="form-input" type="date" style={{ width: "auto" }} value={selDate} onChange={(e) => setSelDate(e.target.value)} />
           </div>
           <button className="btn-primary" onClick={createReport}>
-            {reports.find((r) => r.date === selDate && r.facility_id === session.selected_facility_id) ? "📓 編集する" : "＋ 日報を作成"}
+            {facReports.find((r) => r.date === selDate) ? "📓 編集する" : "＋ 日報を作成"}
           </button>
         </div>
       </div>
 
       {/* 過去の日報一覧 */}
-      {reports.length > 0 && (
+      {facReports.length > 0 ? (
         <div className="card" style={{ overflow: "hidden" }}>
           <table className="data-table">
             <thead>
@@ -318,32 +395,32 @@ export default function DailyReportPage() {
               </tr>
             </thead>
             <tbody>
-              {reports.filter((r) => r.facility_id === session.selected_facility_id)
-                .sort((a, b) => b.date > a.date ? 1 : -1)
-                .map((r) => {
-                  const statusColor: Record<ReportStatus, string> = { "下書き": "#f59e0b", "確認中": "#3b82f6", "承認済": "#22c55e" };
-                  return (
-                    <tr key={r.date}>
-                      <td style={{ fontWeight: 600 }}>{r.date}</td>
-                      <td>{r.weather}</td>
-                      <td>{r.child_count}名</td>
-                      <td><span className="badge" style={{ background: statusColor[r.status] + "22", color: statusColor[r.status] }}>{r.status}</span></td>
-                      <td style={{ fontSize: 12, color: "#64748b" }}>{r.author}</td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button className="btn-secondary" onClick={() => { setReport(r); setView("view"); }} style={{ padding: "4px 10px", fontSize: 11 }}>閲覧</button>
-                          <button className="btn-secondary" onClick={() => { setReport(r); setView("edit"); }} style={{ padding: "4px 10px", fontSize: 11 }}>編集</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+              {facReports.map((r) => {
+                const statusColor: Record<ReportStatus, string> = { "下書き": "#f59e0b", "確認中": "#3b82f6", "承認済": "#22c55e" };
+                return (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.date}</td>
+                    <td>{r.weather}</td>
+                    <td>{r.child_count}名</td>
+                    <td>
+                      <span className="badge" style={{ background: statusColor[r.status] + "22", color: statusColor[r.status] }}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: "#64748b" }}>{r.author}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn-secondary" onClick={() => { setReport(r); setView("view"); }} style={{ padding: "4px 10px", fontSize: 11 }}>閲覧</button>
+                        <button className="btn-secondary" onClick={() => { setReport(r); setView("edit"); }} style={{ padding: "4px 10px", fontSize: 11 }}>編集</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      )}
-
-      {reports.length === 0 && (
+      ) : (
         <div className="card" style={{ padding: "48px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📓</div>
           日報がまだありません。上のボタンから作成してください。

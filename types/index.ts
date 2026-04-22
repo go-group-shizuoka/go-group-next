@@ -116,11 +116,46 @@ export type DailyReport = {
   weather?: string;
   staff_count?: number;
   child_count?: number;
-  activities?: string;
-  incidents?: string;
-  notes?: string;
+  activities?: string;      // JSON配列 [{time, title, detail, staff}]
+  incident?: string;        // 特記事項
+  parent_note?: string;     // 保護者連絡事項
+  tomorrow_note?: string;   // 翌日申し送り
+  manager_note?: string;    // 管理者コメント
   author: string;
   status: "下書き" | "確認中" | "承認済";
+  created_at: string;
+  updated_at?: string;
+};
+
+// 個別支援計画
+export type SupportPlan = {
+  id: string;
+  org_id: string;
+  facility_id: string;
+  child_id: string;
+  child_name: string;
+  plan_start: string;         // YYYY-MM-DD
+  plan_end: string;
+  long_term_goal: string;
+  short_term_goals: string;   // JSON配列 [{goal: string, period: string}]
+  support_items: string;      // JSON配列 [{category: string, content: string, frequency: string}]
+  created_by: string;
+  created_at: string;
+  updated_at?: string;
+};
+
+// シフト記録
+export type ShiftRecord = {
+  id: string;
+  org_id: string;
+  facility_id: string;
+  staff_id: string;
+  staff_name: string;
+  year: number;
+  month: number;
+  day: number;
+  shift_type: string;   // "A" | "B" | "C" | "休" | "有" | ""
+  created_by: string;
   created_at: string;
 };
 
