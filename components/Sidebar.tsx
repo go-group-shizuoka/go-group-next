@@ -73,7 +73,6 @@ export default function Sidebar() {
           width: "240px",
           minHeight: "100vh",
           background: "var(--sb-bg)",
-          display: "flex",
           flexDirection: "column",
           position: "fixed",
           top: 0,
