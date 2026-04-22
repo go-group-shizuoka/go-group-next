@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/messages",     icon: "💬", label: "保護者連絡",     roles: ["admin","manager","staff"] },
   { href: "/daily-report",  icon: "📓", label: "業務日報",       roles: ["admin","manager"] },
   { href: "/support-plan", icon: "📋", label: "個別支援計画",   roles: ["admin","manager"] },
+  { href: "/billing",      icon: "💴", label: "請求管理",       roles: ["admin","manager"] },
   { href: "/schedule",     icon: "📅", label: "生徒予定表",     roles: ["admin","manager","staff"] },
   { href: "/shift",        icon: "📆", label: "シフト管理",     roles: ["admin","manager"] },
   { href: "/transport",    icon: "🚌", label: "送迎管理",       roles: ["admin","manager"] },

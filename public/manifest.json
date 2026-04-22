@@ -1,0 +1,26 @@
+{
+  "name": "GO GROUP 管理システム",
+  "short_name": "GO GROUP",
+  "description": "GO GROUP 放課後等デイサービス・児童発達支援 管理システム",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0a2540",
+  "theme_color": "#0077b6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "lang": "ja"
+}

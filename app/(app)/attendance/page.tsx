@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
+import * as XLSX from "xlsx";
 
 function nowHHMM() {
   const d = new Date();
@@ -72,6 +73,27 @@ export default function AttendancePage() {
   );
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
 
+  // Excel出力
+  const exportExcel = () => {
+    const data = todayChildren.map((child) => {
+      const rec = records[child.id];
+      return {
+        "氏名": child.name,
+        "学年": child.grade ?? "",
+        "来所時間": rec?.arrive ?? "",
+        "退所時間": rec?.depart ?? "",
+        "体温（℃）": rec?.temp ?? "",
+        "状態": rec?.arrive ? "来所" : "未記録",
+        "送迎": child.has_transport ? "あり" : "なし",
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [14, 8, 10, 10, 10, 8, 8].map((w) => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "入退室記録");
+    XLSX.writeFile(wb, `入退室記録_${fac?.name}_${todayISO()}.xlsx`);
+  };
+
   const handleArrive = (childId: string) => {
     const child = DUMMY_CHILDREN.find((c) => c.id === childId);
     const rec: AttendanceRecord = {
@@ -123,13 +145,18 @@ export default function AttendancePage() {
   return (
     <div>
       {/* ヘッダー */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0a2540", margin: 0 }}>
-          📋 入退室記録
-        </h1>
-        <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>
-          {fac?.name} ／ {todayISO()} ({todayDow}曜) ／ {todayChildren.length}名来所予定
-        </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0a2540", margin: 0 }}>
+            📋 入退室記録
+          </h1>
+          <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>
+            {fac?.name} ／ {todayISO()} ({todayDow}曜) ／ {todayChildren.length}名来所予定
+          </p>
+        </div>
+        <button className="btn-secondary" onClick={exportExcel} style={{ fontSize: 12, padding: "7px 14px" }}>
+          📊 Excel出力
+        </button>
       </div>
 
       {/* 入力パネル（選択中） */}

@@ -105,14 +105,27 @@ export default function MessagesPage() {
 
   const handleReply = (msgId: string) => {
     if (!reply.trim()) return;
-    setMessages((p) => p.map((m) => m.id === msgId ? { ...m, replies: [...m.replies, reply], is_read: true } : m));
+    const newReplyText = reply;
+    setMessages((p) => p.map((m) => {
+      if (m.id !== msgId) return m;
+      const updated = { ...m, replies: [...m.replies, newReplyText], is_read: true };
+      // Supabaseに返信を保存
+      saveRecord("ng_messages", updated as unknown as Record<string, unknown>);
+      return updated;
+    }));
     setReply("");
   };
 
   const openThread = (childId: string) => {
     setSelChildId(childId);
     setView("thread");
-    setMessages((p) => p.map((m) => m.child_id === childId ? { ...m, is_read: true } : m));
+    setMessages((p) => p.map((m) => {
+      if (m.child_id !== childId || m.is_read) return m;
+      const updated = { ...m, is_read: true };
+      // 既読をSupabaseに保存
+      saveRecord("ng_messages", updated as unknown as Record<string, unknown>);
+      return updated;
+    }));
   };
 
   // ===== 新規作成 =====
