@@ -132,14 +132,15 @@ CREATE TABLE IF NOT EXISTS public.ng_daily_reports (
   weather TEXT,
   child_count INT DEFAULT 0,
   staff_count INT DEFAULT 0,
-  activities JSONB DEFAULT '[]',
+  activities TEXT,           -- JSON文字列 [{time, title, detail, staff}]
   incident TEXT,
   parent_note TEXT,
   tomorrow_note TEXT,
   manager_note TEXT,
   author TEXT,
   status TEXT DEFAULT '下書き',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
 );
 ALTER TABLE public.ng_daily_reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anon_all" ON public.ng_daily_reports FOR ALL USING (true) WITH CHECK (true);
@@ -152,14 +153,51 @@ CREATE TABLE IF NOT EXISTS public.ng_transport (
   child_id TEXT NOT NULL,
   child_name TEXT,
   date DATE NOT NULL,
-  route TEXT NOT NULL,       -- '来所' or '帰所'
+  route TEXT NOT NULL,          -- '来所' or '帰所'
   status TEXT DEFAULT '待機中', -- '待機中' | '出発' | '到着済' | '欠席'
-  time TEXT,                 -- HH:MM
+  time TEXT,                    -- HH:MM
+  pickup_order INT DEFAULT 0,   -- 送迎順番
   recorded_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.ng_transport ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anon_all" ON public.ng_transport FOR ALL USING (true) WITH CHECK (true);
+
+-- 10. 個別支援計画
+CREATE TABLE IF NOT EXISTS public.ng_support_plans (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  facility_id TEXT NOT NULL,
+  child_id TEXT NOT NULL,
+  child_name TEXT,
+  plan_start DATE,
+  plan_end DATE,
+  long_term_goal TEXT,
+  short_term_goals TEXT,  -- JSON文字列 [{goal, period}]
+  support_items TEXT,     -- JSON文字列 [{category, content, frequency}]
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+);
+ALTER TABLE public.ng_support_plans ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON public.ng_support_plans FOR ALL USING (true) WITH CHECK (true);
+
+-- 11. シフト管理
+CREATE TABLE IF NOT EXISTS public.ng_shifts (
+  id TEXT PRIMARY KEY,          -- '{staff_id}_{year}_{month}_{day}'
+  org_id TEXT NOT NULL,
+  facility_id TEXT NOT NULL,
+  staff_id TEXT NOT NULL,
+  staff_name TEXT,
+  year INT NOT NULL,
+  month INT NOT NULL,
+  day INT NOT NULL,
+  shift_type TEXT DEFAULT '',   -- 'A' | 'B' | 'C' | '休' | '有' | ''
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.ng_shifts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON public.ng_shifts FOR ALL USING (true) WITH CHECK (true);
 
 -- 初期データ: GO GROUP法人
 INSERT INTO public.organizations (id, name, plan)
