@@ -9,6 +9,18 @@ import type { UserSession, Child } from "@/types";
 
 type Tab = "facility" | "staff" | "children";
 
+// 職員型
+type StaffMember = {
+  id: string; org_id: string; facility_id: string;
+  name: string; role: "admin" | "manager" | "staff";
+  login_id: string; created_at: string;
+};
+
+const EMPTY_STAFF = {
+  name: "", role: "staff" as "admin" | "manager" | "staff",
+  login_id: "", facility_id: "",
+};
+
 function genId() { return crypto.randomUUID(); }
 
 const EMPTY_CHILD = {
@@ -32,6 +44,19 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // 職員管理用state
+  const [staffList, setStaffList] = useState<StaffMember[]>(
+    DUMMY_STAFF.map((s) => ({
+      id: s.id, org_id: s.org_id, facility_id: s.facility_id,
+      name: s.name, role: s.role, login_id: s.id,
+      created_at: new Date().toISOString(),
+    }))
+  );
+  const [showStaffForm, setShowStaffForm] = useState(false);
+  const [staffForm, setStaffForm] = useState({ ...EMPTY_STAFF });
+  const [staffSaving, setStaffSaving] = useState(false);
+  const [staffSaved, setStaffSaved] = useState(false);
+
   useEffect(() => {
     const raw = localStorage.getItem("gg_session");
     if (raw) setSession(JSON.parse(raw));
@@ -42,6 +67,28 @@ export default function AdminPage() {
   // 管理者または管理者ロールのみアクセス可
   // staffは閲覧のみ（フォームを隠す）
   const isManager = session.role === "admin" || session.role === "manager";
+
+  // 職員登録
+  const handleSaveStaff = async () => {
+    if (!staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id) return;
+    setStaffSaving(true);
+    const staff: StaffMember = {
+      id: genId(),
+      org_id: session!.org_id,
+      facility_id: staffForm.facility_id || session!.selected_facility_id,
+      name: staffForm.name.trim(),
+      role: staffForm.role,
+      login_id: staffForm.login_id.trim(),
+      created_at: new Date().toISOString(),
+    };
+    await saveRecord("ng_staff", staff as unknown as Record<string, unknown>);
+    setStaffList((prev) => [staff, ...prev]);
+    setStaffForm({ ...EMPTY_STAFF });
+    setShowStaffForm(false);
+    setStaffSaving(false);
+    setStaffSaved(true);
+    setTimeout(() => setStaffSaved(false), 3000);
+  };
 
   const handleDayToggle = (day: string) => {
     setForm((prev) => ({
@@ -289,24 +336,78 @@ export default function AdminPage() {
       {/* ===== 職員管理 ===== */}
       {tab === "staff" && (
         <div>
-          <div style={{ marginBottom: 16, fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
-            登録職員数：{DUMMY_STAFF.length}名
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>登録職員数：{staffList.length}名</div>
+            {isManager && (
+              <button className="btn-primary" onClick={() => { setShowStaffForm(!showStaffForm); setStaffForm({ ...EMPTY_STAFF, facility_id: session.selected_facility_id }); }}>
+                ＋ 職員追加
+              </button>
+            )}
           </div>
+
+          {staffSaved && (
+            <div style={{ background: "#dcfce7", border: "1px solid #86efac", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#166534", fontWeight: 600 }}>
+              ✅ 職員を登録しました。
+            </div>
+          )}
+
+          {/* 職員追加フォーム */}
+          {showStaffForm && isManager && (
+            <div className="card" style={{ padding: 24, marginBottom: 20, border: "2px solid #0077b6" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20, color: "#0077b6" }}>👥 職員追加</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>氏名 *</label>
+                  <input className="form-input" placeholder="田中 美穂" value={staffForm.name} onChange={(e) => setStaffForm(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>ログインID *</label>
+                  <input className="form-input" placeholder="例: tanaka_m" value={staffForm.login_id} onChange={(e) => setStaffForm(p => ({ ...p, login_id: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>役割</label>
+                  <select className="form-input" value={staffForm.role} onChange={(e) => setStaffForm(p => ({ ...p, role: e.target.value as "admin" | "manager" | "staff" }))}>
+                    <option value="staff">職員</option>
+                    <option value="manager">管理者（施設長）</option>
+                    <option value="admin">本部管理者</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>所属施設 *</label>
+                  <select className="form-input" value={staffForm.facility_id} onChange={(e) => setStaffForm(p => ({ ...p, facility_id: e.target.value }))}>
+                    <option value="">選択してください</option>
+                    {DUMMY_FACILITIES.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+                <button className="btn-primary" onClick={handleSaveStaff}
+                  disabled={staffSaving || !staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id}
+                  style={{ minWidth: 100 }}>
+                  {staffSaving ? "保存中..." : "登録する"}
+                </button>
+                <button className="btn-secondary" onClick={() => setShowStaffForm(false)}>キャンセル</button>
+              </div>
+            </div>
+          )}
+
           <div className="card" style={{ overflow: "hidden", padding: 0 }}>
             <table className="data-table">
               <thead>
                 <tr>
                   <th>氏名</th>
+                  <th>ログインID</th>
                   <th>役割</th>
                   <th>所属施設</th>
                 </tr>
               </thead>
               <tbody>
-                {DUMMY_STAFF.map((s) => {
+                {staffList.map((s) => {
                   const fac = DUMMY_FACILITIES.find((f) => f.id === s.facility_id);
                   return (
                     <tr key={s.id}>
                       <td style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>{s.login_id}</td>
                       <td>
                         <span className={`badge ${s.role === "admin" ? "badge-red" : s.role === "manager" ? "badge-blue" : "badge-green"}`}>
                           {s.role === "admin" ? "本部管理者" : s.role === "manager" ? "管理者" : "職員"}
@@ -319,7 +420,6 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
-          <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>※ 職員の追加・編集機能は近日実装予定です。</p>
         </div>
       )}
 

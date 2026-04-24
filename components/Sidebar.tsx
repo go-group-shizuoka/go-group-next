@@ -3,6 +3,7 @@
 // 施設切替 + ナビゲーション。スマホではボトムナビに切り替え。
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { UserSession } from "@/types";
@@ -154,7 +155,7 @@ export default function Sidebar() {
           {visibleNav.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 style={{
@@ -180,7 +181,7 @@ export default function Sidebar() {
               >
                 <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.icon}</span>
                 {item.label}
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -247,7 +248,7 @@ export default function Sidebar() {
         {visibleNav.slice(0, 5).map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               style={{
@@ -264,7 +265,7 @@ export default function Sidebar() {
             >
               <span style={{ fontSize: 20 }}>{item.icon}</span>
               {item.label}
-            </a>
+            </Link>
           );
         })}
         {/* ハンバーガー（残りメニュー） */}
@@ -321,7 +322,7 @@ export default function Sidebar() {
               {session?.name} ({selectedFacility?.name})
             </div>
             {visibleNav.map((item) => (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
@@ -339,7 +340,7 @@ export default function Sidebar() {
               >
                 <span>{item.icon}</span>
                 {item.label}
-              </a>
+              </Link>
             ))}
             <button
               onClick={handleLogout}

@@ -50,14 +50,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh" }}>
       {/* サイドバー（PC固定） */}
       <Sidebar />
 
-      {/* メインコンテンツ */}
+      {/* メインコンテンツ：PCはmargin-left:240px、スマホは0（globals.cssで制御） */}
       <main
         style={{
-          flex: 1,
           padding: "20px 16px",
           minHeight: "100vh",
           paddingBottom: "80px",
