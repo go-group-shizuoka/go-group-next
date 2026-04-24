@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord } from "@/lib/supabase";
 import type { Child } from "@/types";
@@ -83,13 +84,22 @@ export default function ChildDetailPage() {
 
   return (
     <div>
-      {/* 戻るボタン */}
-      <button
-        onClick={() => router.back()}
-        style={{ display: "flex", alignItems: "center", gap: 6, color: "#0077b6", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, marginBottom: 16, fontFamily: "inherit" }}
-      >
-        ← 児童一覧に戻る
-      </button>
+      {/* ヘッダーボタン行 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <button
+          onClick={() => router.back()}
+          style={{ display: "flex", alignItems: "center", gap: 6, color: "#0077b6", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}
+        >
+          ← 児童一覧に戻る
+        </button>
+        {/* 書類管理ボタン */}
+        <Link
+          href={`/children/${id}/docs`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "#0a2540", color: "white", borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
+        >
+          📄 書類管理
+        </Link>
+      </div>
 
       {/* プロフィールバナー */}
       <div style={{ background: "linear-gradient(135deg, #0a2540, #0077b6)", borderRadius: 14, padding: "20px 24px", color: "white", display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
