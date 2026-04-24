@@ -26,6 +26,14 @@ type SupportItem = { category: string; content: string; frequency: string };
 const SUPPORT_CATEGORIES = ["コミュニケーション","社会性","日常生活","運動・感覚","学習","情緒・行動","その他"];
 const FREQUENCY_OPTIONS = ["毎日","週3回以上","週1〜2回","月数回","随時"];
 
+// JSON.parse のラッパー（破損データでもクラッシュしない）
+function safeParseGoals(s: string): ShortGoal[] {
+  try { return JSON.parse(s); } catch { return []; }
+}
+function safeParseItems(s: string): SupportItem[] {
+  try { return JSON.parse(s); } catch { return []; }
+}
+
 export default function SupportPlanPage() {
   const session = useSession();
   const [plans, setPlans] = useState<SupportPlan[]>([]);
@@ -121,7 +129,7 @@ export default function SupportPlanPage() {
   // 短期目標の更新
   const updateShortGoal = (index: number, field: keyof ShortGoal, val: string) => {
     if (!editPlan) return;
-    const goals: ShortGoal[] = JSON.parse(editPlan.short_term_goals);
+    const goals: ShortGoal[] = safeParseGoals(editPlan.short_term_goals);
     goals[index] = { ...goals[index], [field]: val };
     setEditPlan({ ...editPlan, short_term_goals: JSON.stringify(goals) });
   };
@@ -129,40 +137,40 @@ export default function SupportPlanPage() {
   // 支援項目の更新
   const updateSupportItem = (index: number, field: keyof SupportItem, val: string) => {
     if (!editPlan) return;
-    const items: SupportItem[] = JSON.parse(editPlan.support_items);
+    const items: SupportItem[] = safeParseItems(editPlan.support_items);
     items[index] = { ...items[index], [field]: val };
     setEditPlan({ ...editPlan, support_items: JSON.stringify(items) });
   };
 
   const addShortGoal = () => {
     if (!editPlan) return;
-    const goals: ShortGoal[] = JSON.parse(editPlan.short_term_goals);
+    const goals: ShortGoal[] = safeParseGoals(editPlan.short_term_goals);
     setEditPlan({ ...editPlan, short_term_goals: JSON.stringify([...goals, { goal: "", period: "3ヶ月" }]) });
   };
 
   const removeShortGoal = (i: number) => {
     if (!editPlan) return;
-    const goals: ShortGoal[] = JSON.parse(editPlan.short_term_goals);
+    const goals: ShortGoal[] = safeParseGoals(editPlan.short_term_goals);
     setEditPlan({ ...editPlan, short_term_goals: JSON.stringify(goals.filter((_, idx) => idx !== i)) });
   };
 
   const addSupportItem = () => {
     if (!editPlan) return;
-    const items: SupportItem[] = JSON.parse(editPlan.support_items);
+    const items: SupportItem[] = safeParseItems(editPlan.support_items);
     setEditPlan({ ...editPlan, support_items: JSON.stringify([...items, { category: "その他", content: "", frequency: "毎日" }]) });
   };
 
   const removeSupportItem = (i: number) => {
     if (!editPlan) return;
-    const items: SupportItem[] = JSON.parse(editPlan.support_items);
+    const items: SupportItem[] = safeParseItems(editPlan.support_items);
     setEditPlan({ ...editPlan, support_items: JSON.stringify(items.filter((_, idx) => idx !== i)) });
   };
 
   // ===== 編集画面 =====
   if (view === "edit" && editPlan) {
     const selectedChildData = DUMMY_CHILDREN.find((c) => c.id === selectedChild);
-    const shortGoals: ShortGoal[] = JSON.parse(editPlan.short_term_goals);
-    const supportItems: SupportItem[] = JSON.parse(editPlan.support_items);
+    const shortGoals: ShortGoal[] = safeParseGoals(editPlan.short_term_goals);
+    const supportItems: SupportItem[] = safeParseItems(editPlan.support_items);
 
     return (
       <div>

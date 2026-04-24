@@ -12,6 +12,12 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 function getTodayDow() { return ["日","月","火","水","木","金","土"][new Date().getDay()]; }
 function genId() { return crypto.randomUUID(); }
 
+// JSON.parse のラッパー（破損データでもクラッシュしない）
+function safeParseActivities(s?: string): ReportActivity[] {
+  if (!s) return [];
+  try { return JSON.parse(s); } catch { return []; }
+}
+
 type ReportActivity = { time: string; title: string; detail: string; staff: string };
 type ReportStatus = "下書き" | "確認中" | "承認済";
 
@@ -44,7 +50,7 @@ function toLocal(r: DailyReport): DailyReportData {
     author: r.author,
     child_count: r.child_count ?? 0,
     staff_count: r.staff_count ?? 0,
-    activities: r.activities ? JSON.parse(r.activities) : [],
+    activities: safeParseActivities(r.activities),
     incident: r.incident ?? "",
     parent_note: r.parent_note ?? "",
     tomorrow_note: r.tomorrow_note ?? "",
