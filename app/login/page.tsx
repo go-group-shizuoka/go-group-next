@@ -1,15 +1,17 @@
 "use client";
 // ==================== ログイン画面 ====================
-// Supabase Auth を優先し、未登録の場合はダミー認証にフォールバック。
+// Supabase Auth → ng_staff テーブルで職員情報取得 → セッション保存
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_ACCOUNTS, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { authSignIn } from "@/lib/supabase";
+import { authSignIn, supabase } from "@/lib/supabase";
 import type { UserSession } from "@/types";
 
 // セッション有効時間: 8時間
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+// 開発環境かどうか
+const IS_DEV = process.env.NODE_ENV === "development";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,38 +25,75 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    // ① Supabase Auth でのログインを試みる
-    let authOk = false;
+    // ① Supabase Auth でログイン
     const { error: authError } = await authSignIn(username, password);
-    if (!authError) authOk = true;
 
-    // ② ダミーアカウント照合（Supabase未登録ユーザー or 開発環境用）
-    const account = DUMMY_ACCOUNTS.find(
-      (a) => a.username === username && a.password === password
-    );
-
-    if (!authOk && !account) {
+    if (authError) {
+      // 開発環境のみダミーアカウントにフォールバック
+      if (IS_DEV) {
+        const account = DUMMY_ACCOUNTS.find(
+          (a) => a.username === username && a.password === password
+        );
+        if (account) {
+          const session: UserSession & { expires_at: number } = {
+            id: crypto.randomUUID(),
+            org_id: "org_1",
+            facility_id: account.facility_id ?? "f1",
+            staff_id: account.staff_id ?? "",
+            name: account.name,
+            role: account.role,
+            selected_facility_id: account.facility_id ?? DUMMY_FACILITIES[0].id,
+            expires_at: Date.now() + SESSION_TTL_MS,
+          };
+          localStorage.setItem("gg_session", JSON.stringify(session));
+          router.push("/dashboard");
+          return;
+        }
+      }
       setError("ユーザーIDまたはパスワードが正しくありません");
       setLoading(false);
       return;
     }
 
-    // ダミーアカウントが見つからなかった場合（Supabase Authのみ）はusername="admin"扱い
-    const matched = account ?? DUMMY_ACCOUNTS[0];
+    // ② ng_staff テーブルから職員情報を取得
+    const { data: staffRows, error: staffError } = await supabase
+      .from("ng_staff")
+      .select("*")
+      .eq("login_id", username)
+      .limit(1);
 
-    // セッション情報をlocalStorageに保存（有効期限付き）
+    if (staffError || !staffRows || staffRows.length === 0) {
+      // ng_staff に未登録でも Supabase Auth 成功 → ダミーデータにフォールバック
+      const fallback = DUMMY_ACCOUNTS.find((a) => a.username === username);
+      const matched = fallback ?? DUMMY_ACCOUNTS[0];
+      const session: UserSession & { expires_at: number } = {
+        id: crypto.randomUUID(),
+        org_id: "org_1",
+        facility_id: matched.facility_id ?? "f1",
+        staff_id: matched.staff_id ?? "",
+        name: matched.name,
+        role: matched.role,
+        selected_facility_id: matched.facility_id ?? DUMMY_FACILITIES[0].id,
+        expires_at: Date.now() + SESSION_TTL_MS,
+      };
+      localStorage.setItem("gg_session", JSON.stringify(session));
+      router.push("/dashboard");
+      return;
+    }
+
+    // ③ DB の職員情報でセッション作成
+    const staff = staffRows[0];
     const session: UserSession & { expires_at: number } = {
       id: crypto.randomUUID(),
-      org_id: "org_1",
-      facility_id: matched.facility_id ?? "",
-      staff_id: matched.staff_id ?? "",
-      name: matched.name,
-      role: matched.role,
-      selected_facility_id: matched.facility_id ?? DUMMY_FACILITIES[0].id,
+      org_id: staff.org_id ?? "org_1",
+      facility_id: staff.facility_id ?? "f1",
+      staff_id: staff.id,
+      name: staff.name,
+      role: staff.role as "admin" | "manager" | "staff",
+      selected_facility_id: staff.facility_id ?? DUMMY_FACILITIES[0].id,
       expires_at: Date.now() + SESSION_TTL_MS,
     };
     localStorage.setItem("gg_session", JSON.stringify(session));
-
     router.push("/dashboard");
   };
 
@@ -174,43 +213,45 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* 開発用：テストアカウント一覧 */}
-        <div
-          style={{
-            marginTop: "28px",
-            padding: "14px",
-            background: "#f8fafc",
-            borderRadius: "8px",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-          <p style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "8px" }}>
-            🔧 開発用テストアカウント（パスワード: pass）
-          </p>
-          {DUMMY_ACCOUNTS.map((a) => (
-            <button
-              key={a.username}
-              onClick={() => { setUsername(a.username); setPassword("pass"); }}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "5px 8px",
-                fontSize: "12px",
-                color: "#0077b6",
-                background: "transparent",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#dbeafe")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              {a.username} — {a.name}
-            </button>
-          ))}
-        </div>
+        {/* 開発環境のみ：テストアカウント一覧 */}
+        {IS_DEV && (
+          <div
+            style={{
+              marginTop: "28px",
+              padding: "14px",
+              background: "#f8fafc",
+              borderRadius: "8px",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <p style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "8px" }}>
+              🔧 開発用テストアカウント（パスワード: pass）
+            </p>
+            {DUMMY_ACCOUNTS.map((a) => (
+              <button
+                key={a.username}
+                onClick={() => { setUsername(a.username); setPassword("pass"); }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "5px 8px",
+                  fontSize: "12px",
+                  color: "#0077b6",
+                  background: "transparent",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#dbeafe")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                {a.username} — {a.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
