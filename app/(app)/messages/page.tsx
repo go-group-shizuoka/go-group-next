@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByFacility } from "@/lib/supabase";
+import { saveRecord, fetchByFacility, supabase } from "@/lib/supabase";
 import type { UserSession, MessageRecord } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -37,7 +37,7 @@ const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 
 
 export default function MessagesPage() {
   const session = useSession();
-  const [messages, setMessages] = useState<MessageRecord[]>(DUMMY_MESSAGES);
+  const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [selChildId, setSelChildId] = useState<string | null>(null);
   const [newBody, setNewBody] = useState("");
   const [reply, setReply] = useState("");
@@ -45,19 +45,55 @@ export default function MessagesPage() {
   const [loadingDB, setLoadingDB] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Supabaseからメッセージを読み込む（あればDBのデータを優先）
+  // Supabase: 初期ロード + Realtime購読
   useEffect(() => {
     if (!session) return;
     setLoadingDB(true);
+
+    // ① 初期データ取得
     fetchByFacility<MessageRecord>(
       "ng_messages",
       session.org_id,
       session.selected_facility_id
     ).then((rows) => {
-      // DBにデータがあれば上書き、なければダミーデータを維持
-      if (rows.length > 0) setMessages(rows);
+      setMessages(rows);
       setLoadingDB(false);
     });
+
+    // ② Realtime購読（この施設のメッセージをリアルタイム監視）
+    const channel = supabase
+      .channel(`messages_${session.selected_facility_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ng_messages",
+          filter: `facility_id=eq.${session.selected_facility_id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            // 自分が送ったもの（既にstateにある）は重複しない
+            setMessages((prev) => {
+              const newMsg = payload.new as MessageRecord;
+              if (prev.find((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          } else if (payload.eventType === "UPDATE") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === (payload.new as MessageRecord).id
+                  ? (payload.new as MessageRecord)
+                  : m
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // クリーンアップ
+    return () => { supabase.removeChannel(channel); };
   }, [session]);
 
   useEffect(() => {
