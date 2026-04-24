@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES, DUMMY_STAFF } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, DailyReport } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function getTodayDow() { return ["日","月","火","水","木","金","土"][new Date().getDay()]; }
@@ -53,7 +54,7 @@ function toLocal(r: DailyReport): DailyReportData {
 }
 
 export default function DailyReportPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [selDate, setSelDate] = useState(todayISO());
   const [report, setReport] = useState<DailyReportData | null>(null);
   const [saved, setSaved] = useState(false);
@@ -61,11 +62,6 @@ export default function DailyReportPage() {
   const [loadingDB, setLoadingDB] = useState(false);
   const [reports, setReports] = useState<DailyReportData[]>([]);
   const [view, setView] = useState<"list" | "edit" | "view">("list");
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから日報一覧を読み込む
   useEffect(() => {

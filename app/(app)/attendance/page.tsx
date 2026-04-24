@@ -6,6 +6,7 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
 import * as XLSX from "xlsx";
+import { useSession } from "@/hooks/useSession";
 
 function nowHHMM() {
   const d = new Date();
@@ -19,18 +20,12 @@ function getTodayDow() {
 }
 
 export default function AttendancePage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [records, setRecords] = useState<Record<string, { arrive?: string; depart?: string; temp?: string }>>({});
   const [selChild, setSelChild] = useState<string | null>(null);
   const [inputTemp, setInputTemp] = useState("");
   const [inputTime, setInputTime] = useState(nowHHMM());
   const [loadingDB, setLoadingDB] = useState(false);
-
-  // セッション読み込み
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから本日の入退室記録を読み込む
   useEffect(() => {

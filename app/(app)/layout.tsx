@@ -1,6 +1,7 @@
 "use client";
 // ==================== 認証済みエリアのレイアウト ====================
-// サイドバー + メインコンテンツ領域。未ログイン・セッション期限切れ時はログインへ。
+// セッションを同期的にチェック → スピナーなしで即座に表示。
+// 未ログイン・期限切れはuseEffectでログインへリダイレクト。
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -10,44 +11,43 @@ import type { UserSession } from "@/types";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
 
-  // セッションチェック（未ログイン・期限切れ→ログインへ）
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (!raw) {
-      router.replace("/login");
-      return;
+  // 同期的にセッションを確認 → 初回レンダリングから即座にコンテンツ表示
+  const [ready] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = localStorage.getItem("gg_session");
+      if (!raw) return false;
+      const session = JSON.parse(raw) as UserSession & { expires_at?: number };
+      if (session.expires_at && Date.now() > session.expires_at) return false;
+      return true;
+    } catch {
+      return false;
     }
+  });
+
+  // 非ログイン・期限切れはリダイレクト（副作用なのでuseEffectで）
+  useEffect(() => {
+    if (ready) return;
+    const raw = localStorage.getItem("gg_session");
+    if (!raw) { router.replace("/login"); return; }
     try {
       const session = JSON.parse(raw) as UserSession & { expires_at?: number };
-      // 有効期限チェック
       if (session.expires_at && Date.now() > session.expires_at) {
         localStorage.removeItem("gg_session");
-        authSignOut(); // Supabase Authもサインアウト
+        authSignOut();
         router.replace("/login");
-        return;
+      } else {
+        // readyがfalseでもセッションありの場合はリロード
+        router.replace("/login");
       }
-      setReady(true);
     } catch {
       router.replace("/login");
     }
-  }, [router]);
+  }, [ready, router]);
 
-  if (!ready) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div className="spinner" />
-      </div>
-    );
-  }
+  // 未認証の場合は何も表示しない（リダイレクト待ち）
+  if (!ready) return null;
 
   return (
     <div style={{ minHeight: "100vh" }}>

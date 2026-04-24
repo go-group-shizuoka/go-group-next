@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 function genId() { return crypto.randomUUID(); }
 
@@ -33,20 +34,17 @@ const EMPTY_FORM = {
 
 export default function ChildrenNewPage() {
   const router = useRouter();
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // セッションが確定したら所属施設をデフォルト設定
   useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) {
-      const s = JSON.parse(raw) as UserSession;
-      setSession(s);
-      // 所属施設をデフォルト設定
-      setForm((prev) => ({ ...prev, facility_id: s.selected_facility_id }));
+    if (session) {
+      setForm((prev) => ({ ...prev, facility_id: session.selected_facility_id }));
     }
-  }, []);
+  }, [session]);
 
   if (!session) return null;
 

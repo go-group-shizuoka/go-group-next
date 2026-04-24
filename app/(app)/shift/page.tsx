@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacilityWhere } from "@/lib/supabase";
 import type { UserSession, ShiftRecord } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -21,7 +22,7 @@ const SHIFT_TYPES: Record<string, { label: string; color: string; bg: string }> 
 type ShiftMap = Record<string, Record<number, string>>;
 
 export default function ShiftPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
@@ -29,11 +30,6 @@ export default function ShiftPage() {
   const [editCell, setEditCell] = useState<{ staffId: string; day: number } | null>(null);
   const [loadingDB, setLoadingDB] = useState(false);
   const [savingCell, setSavingCell] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから当月のシフトを読み込む
   const loadShifts = useCallback(async () => {

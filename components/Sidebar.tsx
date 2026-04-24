@@ -2,7 +2,7 @@
 // ==================== サイドバー ====================
 // 施設切替 + ナビゲーション。スマホではボトムナビに切り替え。
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
@@ -27,14 +27,15 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [session, setSession] = useState<UserSession | null>(null);
+  // lazy init でlocalStorageを同期読み込み。setSessionは施設切替で使うため残す。
+  const [session, setSession] = useState<UserSession | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("gg_session");
+      return raw ? JSON.parse(raw) as UserSession : null;
+    } catch { return null; }
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // セッション読み込み
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // 施設切替
   const handleFacilityChange = (facilityId: string) => {

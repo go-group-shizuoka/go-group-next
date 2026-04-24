@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { DUMMY_FACILITIES, DUMMY_CHILDREN } from "@/lib/dummy-data";
 import { fetchByDate, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord, ActivityRecord, Child } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 function getTodayDow(): string {
   return ["日","月","火","水","木","金","土"][new Date().getDay()];
@@ -21,16 +22,11 @@ function getTodayDisplay(): string {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [dbChildren, setDbChildren] = useState<Child[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseからリアルデータ取得
   useEffect(() => {

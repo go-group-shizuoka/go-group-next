@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate } from "@/lib/supabase";
 import type { UserSession } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -45,17 +46,12 @@ type TransportRecord = {
 };
 
 export default function TransportPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [route, setRoute] = useState<RouteType>("来所");
   const [records, setRecords] = useState<Record<string, TransportRecord>>({});
   const [selChild, setSelChild] = useState<string | null>(null);
   const [loadingDB, setLoadingDB] = useState(false);
   const [orderMode, setOrderMode] = useState(false);
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから本日の送迎記録を読み込む
   useEffect(() => {

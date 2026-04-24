@@ -2,9 +2,10 @@
 // ==================== 生徒予定表 ====================
 // 月間カレンダーで各日の来所予定児童を確認する画面
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { UserSession, Child } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -22,16 +23,11 @@ function scheduledOnDate(child: Child, date: Date): boolean {
 }
 
 export default function SchedulePage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [selDay, setSelDay] = useState<number | null>(today.getDate());
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   if (!session) return null;
 

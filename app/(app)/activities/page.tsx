@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
 import type { UserSession, ActivityRecord } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 const ACTIVITY_TYPES = [
   "個別支援","集団療育","運動療育","言語療育",
@@ -19,7 +20,7 @@ function genId() {
 }
 
 export default function ActivitiesPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loadingDB, setLoadingDB] = useState(false);
@@ -32,12 +33,6 @@ export default function ActivitiesPage() {
     activity_type: "集団療育",
     visible_to_parent: true,
   });
-
-  // セッション読み込み
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから本日の活動記録を読み込む
   useEffect(() => {

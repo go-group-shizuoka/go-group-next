@@ -7,6 +7,7 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { fetchByFacility } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord, Child } from "@/types";
 import * as XLSX from "xlsx";
+import { useSession } from "@/hooks/useSession";
 
 // 放課後等デイサービスの基本的な単価設定（簡易版）
 const DEFAULT_UNIT_PRICE = 10000; // 1回あたりの基本単価（円）
@@ -35,7 +36,7 @@ type BillingRow = {
 };
 
 export default function BillingPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const today = new Date();
   const [selYear, setSelYear] = useState(today.getFullYear());
   const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
@@ -43,11 +44,6 @@ export default function BillingPage() {
   const [dbChildren, setDbChildren] = useState<Child[]>([]);
   const [unitPrices, setUnitPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // 選択月の入退室データを読み込む
   useEffect(() => {

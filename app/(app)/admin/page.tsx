@@ -2,10 +2,11 @@
 // ==================== 管理画面 ====================
 // 施設管理・職員管理・児童登録
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { DUMMY_FACILITIES, DUMMY_STAFF, DUMMY_CHILDREN } from "@/lib/dummy-data";
 import { saveRecord } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 type Tab = "facility" | "staff" | "children";
 
@@ -36,7 +37,7 @@ const GRADE_OPTIONS = ["未就学", "年少", "年中", "年長", "小1", "小2"
 const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 };
 
 export default function AdminPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [tab, setTab] = useState<Tab>("children");
   const [children, setChildren] = useState<Child[]>(DUMMY_CHILDREN);
   const [showChildForm, setShowChildForm] = useState(false);
@@ -56,11 +57,6 @@ export default function AdminPage() {
   const [staffForm, setStaffForm] = useState({ ...EMPTY_STAFF });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffSaved, setStaffSaved] = useState(false);
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   if (!session) return null;
 

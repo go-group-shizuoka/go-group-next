@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, MessageRecord } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 function genId() { return crypto.randomUUID(); }
 function nowStr() {
@@ -35,7 +36,7 @@ const backBtnStyle: React.CSSProperties = { display: "flex", alignItems: "center
 const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 };
 
 export default function MessagesPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [messages, setMessages] = useState<MessageRecord[]>(DUMMY_MESSAGES);
   const [selChildId, setSelChildId] = useState<string | null>(null);
   const [newBody, setNewBody] = useState("");
@@ -43,12 +44,6 @@ export default function MessagesPage() {
   const [view, setView] = useState<"list" | "thread" | "new">("list");
   const [loadingDB, setLoadingDB] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  // セッション読み込み
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseからメッセージを読み込む（あればDBのデータを優先）
   useEffect(() => {

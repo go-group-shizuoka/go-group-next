@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, SupportPlan } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 function genId() { return crypto.randomUUID(); }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -26,7 +27,7 @@ const SUPPORT_CATEGORIES = ["コミュニケーション","社会性","日常生
 const FREQUENCY_OPTIONS = ["毎日","週3回以上","週1〜2回","月数回","随時"];
 
 export default function SupportPlanPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [plans, setPlans] = useState<SupportPlan[]>([]);
   const [loadingDB, setLoadingDB] = useState(false);
   const [view, setView] = useState<"list" | "edit">("list");
@@ -34,11 +35,6 @@ export default function SupportPlanPage() {
   const [editPlan, setEditPlan] = useState<SupportPlan | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから個別支援計画を読み込む
   useEffect(() => {

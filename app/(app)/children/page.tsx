@@ -7,23 +7,19 @@ import { useRouter } from "next/navigation";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { supabase } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
+import { useSession } from "@/hooks/useSession";
 
 const DOW_LIST = ["月","火","水","木","金"];
 const GRADE_LIST = ["未就学","小1","小2","小3","小4","小5","小6","中1","中2","中3"];
 
 export default function ChildrenPage() {
   const router = useRouter();
-  const [session, setSession] = useState<UserSession | null>(null);
+  const session = useSession();
   const [children, setChildren] = useState<Child[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterDow, setFilterDow] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
-
-  useEffect(() => {
-    const raw = localStorage.getItem("gg_session");
-    if (raw) setSession(JSON.parse(raw));
-  }, []);
 
   // Supabaseから児童データ取得
   useEffect(() => {
