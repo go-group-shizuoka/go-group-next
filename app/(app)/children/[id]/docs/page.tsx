@@ -10,7 +10,7 @@ import { supabase, saveRecord } from "@/lib/supabase";
 
 // ==================== 型定義 ====================
 
-type TabKey = "facesheet_front" | "facesheet_back" | "assessment";
+type TabKey = "facesheet_front" | "facesheet_back" | "assessment" | "plan_draft" | "plan_final";
 
 // 家族構成（1行分）
 type FamilyMember = {
@@ -73,6 +73,59 @@ type FacesheetBack = {
   hypersensitivity_other: string;
   rule_understanding: string;
   allergies: string;
+};
+
+// 支援目標の1行
+type PlanGoal = {
+  goal: string;        // 目標内容
+  period: string;      // 達成期間（3ヶ月など）
+  achievement: string; // 達成状況（記録時に使用）
+};
+
+// 支援内容の1行
+type PlanSupportItem = {
+  target: string;    // 支援目標
+  method: string;    // 支援内容・方法
+  frequency: string; // 支援量・頻度
+  staff: string;     // 担当者
+};
+
+// 個別支援計画（原案）
+type SupportPlanDraft = {
+  id: string;
+  child_id: string;
+  org_id: string;
+  plan_start: string;
+  plan_end: string;
+  // 意向確認
+  child_wish: string;      // 本人の意向
+  family_wish: string;     // 家族の意向
+  // 支援方針
+  support_policy: string;  // 総合的な支援の方針
+  priority_issue: string;  // 解決すべき課題
+  // 目標
+  long_term_goal: string;
+  long_term_period: string;
+  short_term_goals: PlanGoal[];       // JSON
+  // 支援内容テーブル
+  support_items: PlanSupportItem[];   // JSON
+  // 説明・同意
+  explained_date: string;
+  agreed_date: string;
+  parent_signature: string;
+  // 作成
+  author: string;
+  manager: string;
+  created_date: string;
+  updated_at: string;
+};
+
+// 個別支援計画（本書）= 原案と同じ構造 + 署名欄など
+type SupportPlanFinal = SupportPlanDraft & {
+  manager_confirmed_date: string; // 管理者確認日
+  next_monitoring_date: string;   // 次回モニタリング予定日
+  effective_start: string;        // 有効期間（開始）
+  effective_end: string;          // 有効期間（終了）
 };
 
 // アセスメントシート
@@ -162,6 +215,49 @@ function defaultBack(childId: string): FacesheetBack {
   };
 }
 
+function defaultPlanDraft(childId: string, orgId: string): SupportPlanDraft {
+  return {
+    id: `pd_${childId}`,
+    child_id: childId,
+    org_id: orgId,
+    plan_start: "",
+    plan_end: "",
+    child_wish: "",
+    family_wish: "",
+    support_policy: "",
+    priority_issue: "",
+    long_term_goal: "",
+    long_term_period: "1年",
+    short_term_goals: [
+      { goal: "", period: "3ヶ月", achievement: "" },
+      { goal: "", period: "3ヶ月", achievement: "" },
+      { goal: "", period: "6ヶ月", achievement: "" },
+    ],
+    support_items: [
+      { target: "", method: "", frequency: "毎日", staff: "" },
+      { target: "", method: "", frequency: "週3回以上", staff: "" },
+    ],
+    explained_date: "",
+    agreed_date: "",
+    parent_signature: "",
+    author: "",
+    manager: "",
+    created_date: "",
+    updated_at: "",
+  };
+}
+
+function defaultPlanFinal(childId: string, orgId: string): SupportPlanFinal {
+  return {
+    ...defaultPlanDraft(childId, orgId),
+    id: `pf_${childId}`,
+    manager_confirmed_date: "",
+    next_monitoring_date: "",
+    effective_start: "",
+    effective_end: "",
+  };
+}
+
 function defaultAssessment(childId: string): Assessment {
   return {
     id: `as_${childId}`,
@@ -189,9 +285,11 @@ function defaultAssessment(childId: string): Assessment {
 // ==================== タブ定義 ====================
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
-  { key: "facesheet_front", label: "フェイスシート（表）", icon: "📋" },
-  { key: "facesheet_back",  label: "フェイスシート（裏）", icon: "📄" },
-  { key: "assessment",      label: "アセスメントシート",  icon: "📊" },
+  { key: "facesheet_front", label: "フェイスシート（表）",    icon: "📋" },
+  { key: "facesheet_back",  label: "フェイスシート（裏）",    icon: "📄" },
+  { key: "assessment",      label: "アセスメントシート",      icon: "📊" },
+  { key: "plan_draft",      label: "個別支援計画（原案）",    icon: "📝" },
+  { key: "plan_final",      label: "個別支援計画（本書）",    icon: "📘" },
 ];
 
 // ==================== ページ本体 ====================
@@ -209,6 +307,8 @@ export default function DocsPage() {
   const [front, setFront] = useState<FacesheetFront>(() => defaultFront(childId));
   const [back, setBack]   = useState<FacesheetBack>(() => defaultBack(childId));
   const [assessment, setAssessment] = useState<Assessment>(() => defaultAssessment(childId));
+  const [planDraft, setPlanDraft] = useState<SupportPlanDraft>(() => defaultPlanDraft(childId, ""));
+  const [planFinal, setPlanFinal] = useState<SupportPlanFinal>(() => defaultPlanFinal(childId, ""));
 
   const child = DUMMY_CHILDREN.find((c) => c.id === childId);
   const fac   = child ? DUMMY_FACILITIES.find((f) => f.id === child.facility_id) : undefined;
@@ -318,6 +418,29 @@ export default function DocsPage() {
         });
       }
 
+      const [drafts, finals] = await Promise.all([
+        supabase.from("ng_plan_drafts").select("*").eq("child_id", childId),
+        supabase.from("ng_plan_finals").select("*").eq("child_id", childId),
+      ]);
+      if (drafts.data && drafts.data.length > 0) {
+        const row = drafts.data[0] as Record<string, unknown>;
+        setPlanDraft({
+          ...defaultPlanDraft(childId, String(row.org_id ?? "")),
+          ...row,
+          short_term_goals: (() => { try { return typeof row.short_term_goals === "string" ? JSON.parse(row.short_term_goals) : (row.short_term_goals ?? []); } catch { return []; } })(),
+          support_items: (() => { try { return typeof row.support_items === "string" ? JSON.parse(row.support_items) : (row.support_items ?? []); } catch { return []; } })(),
+        } as SupportPlanDraft);
+      }
+      if (finals.data && finals.data.length > 0) {
+        const row = finals.data[0] as Record<string, unknown>;
+        setPlanFinal({
+          ...defaultPlanFinal(childId, String(row.org_id ?? "")),
+          ...row,
+          short_term_goals: (() => { try { return typeof row.short_term_goals === "string" ? JSON.parse(row.short_term_goals) : (row.short_term_goals ?? []); } catch { return []; } })(),
+          support_items: (() => { try { return typeof row.support_items === "string" ? JSON.parse(row.support_items) : (row.support_items ?? []); } catch { return []; } })(),
+        } as SupportPlanFinal);
+      }
+
       setLoading(false);
     }
     loadData();
@@ -338,6 +461,7 @@ export default function DocsPage() {
   // 保存処理
   const handleSave = async () => {
     setSavingMsg("保存中...");
+    const now = new Date().toISOString();
     try {
       if (tab === "facesheet_front" || tab === "facesheet_back") {
         // フェイスシート表・裏は1レコードにまとめて保存
@@ -347,6 +471,20 @@ export default function DocsPage() {
           id: `fs_${childId}`,
           child_id: childId,
         });
+      } else if (tab === "plan_draft") {
+        await saveRecord("ng_plan_drafts", {
+          ...planDraft,
+          short_term_goals: JSON.stringify(planDraft.short_term_goals),
+          support_items: JSON.stringify(planDraft.support_items),
+          updated_at: now,
+        } as unknown as Record<string, unknown>);
+      } else if (tab === "plan_final") {
+        await saveRecord("ng_plan_finals", {
+          ...planFinal,
+          short_term_goals: JSON.stringify(planFinal.short_term_goals),
+          support_items: JSON.stringify(planFinal.support_items),
+          updated_at: now,
+        } as unknown as Record<string, unknown>);
       } else {
         await saveRecord("ng_assessments", assessment as unknown as Record<string, unknown>);
       }
@@ -470,6 +608,28 @@ export default function DocsPage() {
             {tab === "assessment" && (
               <AssessmentForm assessment={assessment} onChange={setAssessment} />
             )}
+            {tab === "plan_draft" && (
+              <SupportPlanForm
+                plan={planDraft}
+                onChange={setPlanDraft}
+                isDraft={true}
+              />
+            )}
+            {tab === "plan_final" && (
+              <SupportPlanForm
+                plan={planFinal}
+                onChange={setPlanFinal as (v: SupportPlanDraft) => void}
+                isDraft={false}
+                finalProps={{
+                  manager_confirmed_date: planFinal.manager_confirmed_date,
+                  next_monitoring_date: planFinal.next_monitoring_date,
+                  effective_start: planFinal.effective_start,
+                  effective_end: planFinal.effective_end,
+                  onChangeFinal: (field: keyof SupportPlanFinal, val: string) =>
+                    setPlanFinal({ ...planFinal, [field]: val }),
+                }}
+              />
+            )}
 
             {/* 保存・印刷ボタン */}
             <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
@@ -502,6 +662,12 @@ export default function DocsPage() {
         )}
         {tab === "assessment" && (
           <PrintAssessment assessment={assessment} child={child} />
+        )}
+        {tab === "plan_draft" && (
+          <PrintSupportPlan plan={planDraft} child={child} fac={fac} isDraft={true} />
+        )}
+        {tab === "plan_final" && (
+          <PrintSupportPlan plan={planFinal} child={child} fac={fac} isDraft={false} />
         )}
       </div>
     </div>
@@ -1168,6 +1334,446 @@ function PrintBack({ back, child }: { back: FacesheetBack; child: ChildType }) {
           </tr>
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ==================== 個別支援計画フォーム ====================
+
+const PERIOD_OPTIONS = ["1ヶ月", "2ヶ月", "3ヶ月", "4ヶ月", "5ヶ月", "6ヶ月", "1年"];
+const FREQ_OPTIONS = ["毎日", "週3回以上", "週1〜2回", "月数回", "随時", "その都度"];
+
+type FinalProps = {
+  manager_confirmed_date: string;
+  next_monitoring_date: string;
+  effective_start: string;
+  effective_end: string;
+  onChangeFinal: (field: keyof SupportPlanFinal, val: string) => void;
+};
+
+function SupportPlanForm({
+  plan,
+  onChange,
+  isDraft,
+  finalProps,
+}: {
+  plan: SupportPlanDraft;
+  onChange: (v: SupportPlanDraft) => void;
+  isDraft: boolean;
+  finalProps?: FinalProps;
+}) {
+  const set = (field: keyof SupportPlanDraft, val: string) =>
+    onChange({ ...plan, [field]: val });
+
+  const setGoal = (i: number, field: keyof PlanGoal, val: string) => {
+    const goals = [...plan.short_term_goals];
+    goals[i] = { ...goals[i], [field]: val };
+    onChange({ ...plan, short_term_goals: goals });
+  };
+
+  const addGoal = () =>
+    onChange({ ...plan, short_term_goals: [...plan.short_term_goals, { goal: "", period: "3ヶ月", achievement: "" }] });
+
+  const removeGoal = (i: number) =>
+    onChange({ ...plan, short_term_goals: plan.short_term_goals.filter((_, idx) => idx !== i) });
+
+  const setItem = (i: number, field: keyof PlanSupportItem, val: string) => {
+    const items = [...plan.support_items];
+    items[i] = { ...items[i], [field]: val };
+    onChange({ ...plan, support_items: items });
+  };
+
+  const addItem = () =>
+    onChange({ ...plan, support_items: [...plan.support_items, { target: "", method: "", frequency: "毎日", staff: "" }] });
+
+  const removeItem = (i: number) =>
+    onChange({ ...plan, support_items: plan.support_items.filter((_, idx) => idx !== i) });
+
+  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 };
+  const sec = (title: string, children: React.ReactNode) => (
+    <div className="card" style={{ padding: "16px 20px", marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#0077b6", marginBottom: 12, borderBottom: "1.5px solid #e2e8f0", paddingBottom: 8 }}>{title}</div>
+      {children}
+    </div>
+  );
+
+  return (
+    <>
+      {/* タイトル */}
+      <div style={{ textAlign: "center", marginBottom: 16, padding: "14px 20px", background: "linear-gradient(135deg,#0a2540,#0077b6)", borderRadius: 12, color: "white" }}>
+        <div style={{ fontSize: 16, fontWeight: 800 }}>
+          {isDraft ? "📝 個別支援計画書（原案）" : "📘 個別支援計画書（本書）"}
+        </div>
+      </div>
+
+      {/* 計画期間 */}
+      {sec("計画期間",
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <label style={lbl}>開始日</label>
+            <input className="form-input" type="date" value={plan.plan_start} onChange={(e) => set("plan_start", e.target.value)} />
+          </div>
+          <div style={{ color: "#64748b", fontWeight: 600, marginTop: 16 }}>〜</div>
+          <div>
+            <label style={lbl}>終了日</label>
+            <input className="form-input" type="date" value={plan.plan_end} onChange={(e) => set("plan_end", e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* 意向確認 */}
+      {sec("意向確認",
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={lbl}>本人の意向・希望</label>
+            <textarea className="form-input" style={{ minHeight: 70, resize: "vertical" }}
+              placeholder="本人が希望していること・やりたいこと"
+              value={plan.child_wish} onChange={(e) => set("child_wish", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>家族の意向・希望</label>
+            <textarea className="form-input" style={{ minHeight: 70, resize: "vertical" }}
+              placeholder="保護者が希望していること・お子さんに身につけてほしいこと"
+              value={plan.family_wish} onChange={(e) => set("family_wish", e.target.value)} />
+          </div>
+        </>
+      )}
+
+      {/* 支援方針 */}
+      {sec("支援方針・優先課題",
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={lbl}>総合的な支援の方針</label>
+            <textarea className="form-input" style={{ minHeight: 80, resize: "vertical" }}
+              placeholder="支援全体の方向性・大切にすること"
+              value={plan.support_policy} onChange={(e) => set("support_policy", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>解決すべき課題（優先ニーズ）</label>
+            <textarea className="form-input" style={{ minHeight: 60, resize: "vertical" }}
+              placeholder="現時点で最も重要な支援課題"
+              value={plan.priority_issue} onChange={(e) => set("priority_issue", e.target.value)} />
+          </div>
+        </>
+      )}
+
+      {/* 長期目標 */}
+      {sec("長期目標",
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={lbl}>長期目標</label>
+            <textarea className="form-input" style={{ minHeight: 70, resize: "vertical" }}
+              placeholder="計画期間全体で達成を目指す目標"
+              value={plan.long_term_goal} onChange={(e) => set("long_term_goal", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>期間</label>
+            <select className="form-input" value={plan.long_term_period} onChange={(e) => set("long_term_period", e.target.value)}>
+              {PERIOD_OPTIONS.map((p) => <option key={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* 短期目標 */}
+      {sec("短期目標",
+        <>
+          {plan.short_term_goals.map((g, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10 }}>
+              <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#0077b6", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0, marginTop: 24 }}>{i + 1}</div>
+              <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8 }}>
+                <div>
+                  <label style={lbl}>目標内容</label>
+                  <input className="form-input" value={g.goal} placeholder={`短期目標${i + 1}`}
+                    onChange={(e) => setGoal(i, "goal", e.target.value)} />
+                </div>
+                <div>
+                  <label style={lbl}>期間</label>
+                  <select className="form-input" style={{ width: 100 }} value={g.period} onChange={(e) => setGoal(i, "period", e.target.value)}>
+                    {PERIOD_OPTIONS.map((p) => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                {!isDraft && (
+                  <div>
+                    <label style={lbl}>達成状況</label>
+                    <select className="form-input" style={{ width: 110 }} value={g.achievement} onChange={(e) => setGoal(i, "achievement", e.target.value)}>
+                      <option value="">未評価</option>
+                      <option value="達成">達成</option>
+                      <option value="概ね達成">概ね達成</option>
+                      <option value="一部達成">一部達成</option>
+                      <option value="未達成">未達成</option>
+                      <option value="継続">継続</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {plan.short_term_goals.length > 1 && (
+                <button onClick={() => removeGoal(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 18, marginTop: 20, flexShrink: 0 }}>✕</button>
+              )}
+            </div>
+          ))}
+          <button className="btn-secondary" onClick={addGoal} style={{ fontSize: 12, padding: "6px 14px" }}>＋ 短期目標を追加</button>
+        </>
+      )}
+
+      {/* 支援内容 */}
+      {sec("支援内容・具体的な取り組み",
+        <>
+          <div style={{ overflowX: "auto", marginBottom: 10 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  {["支援目標", "支援内容・方法", "頻度", "担当", ""].map((h) => (
+                    <th key={h} style={{ padding: "8px 10px", border: "1px solid #e2e8f0", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {plan.support_items.map((item, i) => (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid #e2e8f0", padding: 6 }}>
+                      <input className="form-input" value={item.target} placeholder="支援目標"
+                        onChange={(e) => setItem(i, "target", e.target.value)} style={{ minWidth: 120 }} />
+                    </td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: 6 }}>
+                      <textarea className="form-input" value={item.method} placeholder="具体的な支援内容・方法"
+                        onChange={(e) => setItem(i, "method", e.target.value)} style={{ minWidth: 180, minHeight: 60, resize: "vertical" }} />
+                    </td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: 6 }}>
+                      <select className="form-input" value={item.frequency} onChange={(e) => setItem(i, "frequency", e.target.value)} style={{ minWidth: 90 }}>
+                        {FREQ_OPTIONS.map((f) => <option key={f}>{f}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: 6 }}>
+                      <input className="form-input" value={item.staff} placeholder="担当者"
+                        onChange={(e) => setItem(i, "staff", e.target.value)} style={{ minWidth: 80 }} />
+                    </td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: 6, textAlign: "center" }}>
+                      {plan.support_items.length > 1 && (
+                        <button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button className="btn-secondary" onClick={addItem} style={{ fontSize: 12, padding: "6px 14px" }}>＋ 行を追加</button>
+        </>
+      )}
+
+      {/* 説明・同意 */}
+      {sec("説明・同意確認",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={lbl}>説明日</label>
+            <input className="form-input" type="date" value={plan.explained_date} onChange={(e) => set("explained_date", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>同意日</label>
+            <input className="form-input" type="date" value={plan.agreed_date} onChange={(e) => set("agreed_date", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>保護者氏名</label>
+            <input className="form-input" value={plan.parent_signature} placeholder="保護者氏名（自署）"
+              onChange={(e) => set("parent_signature", e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* 本書専用：管理者確認・有効期間 */}
+      {!isDraft && finalProps && sec("管理者確認・有効期間",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={lbl}>有効期間（開始）</label>
+            <input className="form-input" type="date" value={finalProps.effective_start} onChange={(e) => finalProps.onChangeFinal("effective_start", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>有効期間（終了）</label>
+            <input className="form-input" type="date" value={finalProps.effective_end} onChange={(e) => finalProps.onChangeFinal("effective_end", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>管理者確認日</label>
+            <input className="form-input" type="date" value={finalProps.manager_confirmed_date} onChange={(e) => finalProps.onChangeFinal("manager_confirmed_date", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>次回モニタリング予定日</label>
+            <input className="form-input" type="date" value={finalProps.next_monitoring_date} onChange={(e) => finalProps.onChangeFinal("next_monitoring_date", e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* 作成情報 */}
+      {sec("作成情報",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={lbl}>担当者</label>
+            <input className="form-input" value={plan.author} placeholder="担当職員名"
+              onChange={(e) => set("author", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>管理者</label>
+            <input className="form-input" value={plan.manager} placeholder="管理者名"
+              onChange={(e) => set("manager", e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>作成日</label>
+            <input className="form-input" type="date" value={plan.created_date}
+              onChange={(e) => set("created_date", e.target.value)} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ==================== 個別支援計画 印刷レイアウト ====================
+
+function PrintSupportPlan({ plan, child, fac, isDraft }: {
+  plan: SupportPlanDraft;
+  child: typeof DUMMY_CHILDREN[number];
+  fac: typeof DUMMY_FACILITIES[number] | undefined;
+  isDraft: boolean;
+}) {
+  return (
+    <div>
+      <div className="print-title">
+        個別支援計画書{isDraft ? "（原案）" : "（本書）"}　{fac?.name}
+      </div>
+
+      <table className="print-table" style={{ marginBottom: 10 }}>
+        <tbody>
+          <tr>
+            <th style={{ width: 100 }}>利用者氏名</th>
+            <td style={{ width: 160 }}>{child.name}</td>
+            <th style={{ width: 80 }}>生年月日</th>
+            <td>{child.dob}</td>
+          </tr>
+          <tr>
+            <th>学年</th>
+            <td>{child.grade}</td>
+            <th>所属施設</th>
+            <td>{fac?.name}</td>
+          </tr>
+          <tr>
+            <th>計画期間</th>
+            <td colSpan={3}>{plan.plan_start} 〜 {plan.plan_end}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">意向確認</div>
+      <table className="print-table" style={{ marginBottom: 10 }}>
+        <tbody>
+          <tr>
+            <th style={{ width: 140 }}>本人の意向・希望</th>
+            <td>{plan.child_wish}</td>
+          </tr>
+          <tr>
+            <th>家族の意向・希望</th>
+            <td>{plan.family_wish}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">支援方針</div>
+      <div className="print-box">{plan.support_policy}</div>
+
+      <div className="print-subtitle">解決すべき課題</div>
+      <div className="print-box" style={{ minHeight: 40 }}>{plan.priority_issue}</div>
+
+      <div className="print-subtitle">長期目標（期間：{plan.long_term_period}）</div>
+      <div className="print-box">{plan.long_term_goal}</div>
+
+      <div className="print-subtitle">短期目標</div>
+      <table className="print-table" style={{ marginBottom: 10 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 30 }}>No.</th>
+            <th>目標内容</th>
+            <th style={{ width: 70 }}>期間</th>
+            {!isDraft && <th style={{ width: 90 }}>達成状況</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {plan.short_term_goals.map((g, i) => (
+            <tr key={i}>
+              <td style={{ textAlign: "center" }}>{i + 1}</td>
+              <td>{g.goal}</td>
+              <td>{g.period}</td>
+              {!isDraft && <td>{g.achievement}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">支援内容</div>
+      <table className="print-table" style={{ marginBottom: 10 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 120 }}>支援目標</th>
+            <th>支援内容・方法</th>
+            <th style={{ width: 80 }}>頻度</th>
+            <th style={{ width: 80 }}>担当</th>
+          </tr>
+        </thead>
+        <tbody>
+          {plan.support_items.map((item, i) => (
+            <tr key={i}>
+              <td>{item.target}</td>
+              <td>{item.method}</td>
+              <td>{item.frequency}</td>
+              <td>{item.staff}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <table className="print-table" style={{ marginBottom: 10 }}>
+        <tbody>
+          <tr>
+            <th style={{ width: 120 }}>説明日</th>
+            <td>{plan.explained_date}</td>
+            <th style={{ width: 120 }}>同意日</th>
+            <td>{plan.agreed_date}</td>
+          </tr>
+          <tr>
+            <th>保護者氏名</th>
+            <td>{plan.parent_signature}</td>
+            <th>担当者</th>
+            <td>{plan.author}</td>
+          </tr>
+          <tr>
+            <th>管理者</th>
+            <td>{plan.manager}</td>
+            <th>作成日</th>
+            <td>{plan.created_date}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {!isDraft && (
+        <table className="print-table">
+          <tbody>
+            <tr>
+              <th style={{ width: 160 }}>有効期間</th>
+              <td>{(plan as SupportPlanFinal).effective_start} 〜 {(plan as SupportPlanFinal).effective_end}</td>
+            </tr>
+            <tr>
+              <th>管理者確認日</th>
+              <td>{(plan as SupportPlanFinal).manager_confirmed_date}</td>
+            </tr>
+            <tr>
+              <th>次回モニタリング予定</th>
+              <td>{(plan as SupportPlanFinal).next_monitoring_date}</td>
+            </tr>
+            <tr>
+              <th>管理者署名欄</th>
+              <td style={{ minHeight: 40 }}></td>
+            </tr>
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
