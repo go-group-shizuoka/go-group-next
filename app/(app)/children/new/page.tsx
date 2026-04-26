@@ -25,7 +25,8 @@ const labelStyle: React.CSSProperties = {
 const EMPTY_FORM = {
   name: "", name_kana: "", dob: "", grade: "",
   gender: "" as "" | "男" | "女",
-  diagnosis: "", use_days: [] as string[],
+  diagnosis: "", school: "",
+  use_days: [] as string[],
   has_transport: false,
   parent_name: "", parent_phone: "",
   notes: "", support_content: "",
@@ -79,6 +80,7 @@ export default function ChildrenNewPage() {
       grade: form.grade || undefined,
       gender: (form.gender as "男" | "女") || undefined,
       diagnosis: form.diagnosis || undefined,
+      school: form.school || undefined,
       use_days: form.use_days,
       has_transport: form.has_transport,
       parent_name: form.parent_name || undefined,
@@ -160,6 +162,14 @@ export default function ChildrenNewPage() {
             <input className="form-input" placeholder="例：自閉スペクトラム症"
               value={form.diagnosis} onChange={(e) => setForm(p => ({ ...p, diagnosis: e.target.value }))} />
           </div>
+
+          {/* 学校名 */}
+          <div>
+            <label style={labelStyle}>学校名</label>
+            <input className="form-input" placeholder="例：○○小学校"
+              value={form.school} onChange={(e) => setForm(p => ({ ...p, school: e.target.value }))} />
+          </div>
+          <div>{/* スペーサー */}</div>
 
           {/* 所属施設 */}
           <div style={{ gridColumn: "1 / -1" }}>

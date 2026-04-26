@@ -20,6 +20,7 @@ export default function ChildrenPage() {
   const [search, setSearch] = useState("");
   const [filterDow, setFilterDow] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
+  const [filterSchool, setFilterSchool] = useState("");
 
   // Supabaseから児童データ取得
   useEffect(() => {
@@ -52,6 +53,11 @@ export default function ChildrenPage() {
       (session.role === "admin" || c.facility_id === session.selected_facility_id)
   );
 
+  // 学校一覧を動的生成（重複なし・空白除外）
+  const schoolList = Array.from(
+    new Set(baseChildren.map((c) => c.school ?? "").filter(Boolean))
+  ).sort();
+
   // 検索・絞り込み
   const filtered = baseChildren.filter((c) => {
     const matchSearch =
@@ -62,7 +68,9 @@ export default function ChildrenPage() {
       !filterDow || (c.use_days ?? []).includes(filterDow);
     const matchGrade =
       !filterGrade || c.grade === filterGrade;
-    return matchSearch && matchDow && matchGrade;
+    const matchSchool =
+      !filterSchool || (c.school ?? "") === filterSchool;
+    return matchSearch && matchDow && matchGrade && matchSchool;
   });
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
@@ -147,11 +155,23 @@ export default function ChildrenPage() {
             <option key={g} value={g}>{g}</option>
           ))}
         </select>
+        {/* 学校フィルタ */}
+        <select
+          className="form-input"
+          style={{ width: "auto", flex: "0 0 auto" }}
+          value={filterSchool}
+          onChange={(e) => setFilterSchool(e.target.value)}
+        >
+          <option value="">学校 すべて</option>
+          {schoolList.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
         {/* リセット */}
-        {(search || filterDow || filterGrade) && (
+        {(search || filterDow || filterGrade || filterSchool) && (
           <button
             className="btn-secondary"
-            onClick={() => { setSearch(""); setFilterDow(""); setFilterGrade(""); }}
+            onClick={() => { setSearch(""); setFilterDow(""); setFilterGrade(""); setFilterSchool(""); }}
             style={{ padding: "8px 14px", fontSize: 12 }}
           >
             ✕ リセット
@@ -297,6 +317,13 @@ function ChildCard({
               {d}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* 学校名 */}
+      {child.school && (
+        <div style={{ fontSize: 11, color: "#0077b6", marginBottom: 6, fontWeight: 600 }}>
+          🏫 {child.school}
         </div>
       )}
 

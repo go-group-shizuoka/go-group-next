@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { supabase, saveRecord } from "@/lib/supabase";
+import type { Child } from "@/types";
 
 // ==================== 型定義 ====================
 
@@ -310,8 +311,9 @@ export default function DocsPage() {
   const [planDraft, setPlanDraft] = useState<SupportPlanDraft>(() => defaultPlanDraft(childId, ""));
   const [planFinal, setPlanFinal] = useState<SupportPlanFinal>(() => defaultPlanFinal(childId, ""));
 
-  const child = DUMMY_CHILDREN.find((c) => c.id === childId);
-  const fac   = child ? DUMMY_FACILITIES.find((f) => f.id === child.facility_id) : undefined;
+  // 児童情報：まずダミーデータから探し、なければDBから取得
+  const [child, setChild] = useState<Child | undefined>(DUMMY_CHILDREN.find((c) => c.id === childId));
+  const fac = child ? DUMMY_FACILITIES.find((f) => f.id === child.facility_id) : undefined;
 
   // セッションチェック（未ログインならログイン画面へ）
   useEffect(() => {
@@ -325,6 +327,17 @@ export default function DocsPage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
+
+      // ダミーデータにない場合はDBから児童情報を取得
+      if (!DUMMY_CHILDREN.find((c) => c.id === childId)) {
+        const { data: dbChild } = await supabase
+          .from("ng_children")
+          .select("*")
+          .eq("id", childId)
+          .limit(1);
+        if (dbChild && dbChild.length > 0) setChild(dbChild[0] as Child);
+      }
+
       const [fsRes, asRes] = await Promise.all([
         supabase.from("ng_facesheets").select("*").eq("child_id", childId),
         supabase.from("ng_assessments").select("*").eq("child_id", childId),

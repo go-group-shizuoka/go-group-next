@@ -200,6 +200,7 @@ function BasicInfoTab({
       { label: "性別",         value: child.gender ?? "—" },
       { label: "学年",         value: child.grade ?? "—" },
       { label: "診断名",       value: child.diagnosis ?? "—" },
+      { label: "学校名",       value: child.school ?? "—" },
       { label: "障害支援区分", value: child.disability_level ?? "—" },
       { label: "所属施設",     value: fac?.name ?? "—" },
       { label: "利用曜日",     value: child.use_days ? child.use_days.join("・") + "曜" : "—" },
@@ -245,6 +246,9 @@ function BasicInfoTab({
       </EditRow>
       <EditRow label="診断名">
         <input className="form-input" value={child.diagnosis ?? ""} placeholder="例: 自閉スペクトラム症" onChange={(e) => onChange("diagnosis", e.target.value)} />
+      </EditRow>
+      <EditRow label="学校名">
+        <input className="form-input" value={child.school ?? ""} placeholder="例: ○○小学校" onChange={(e) => onChange("school", e.target.value)} />
       </EditRow>
       <EditRow label="障害支援区分">
         <input className="form-input" value={child.disability_level ?? ""} placeholder="例: 区分3" onChange={(e) => onChange("disability_level", e.target.value)} />

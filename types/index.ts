@@ -51,6 +51,7 @@ export type Child = {
   emergency_contact?: string;
   parent_name?: string;
   parent_phone?: string;
+  school?: string;       // 学校名
   notes?: string;        // 注意事項
   support_content?: string; // 支援内容
   active: boolean;
