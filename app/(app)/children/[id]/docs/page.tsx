@@ -11,7 +11,7 @@ import type { Child } from "@/types";
 
 // ==================== 型定義 ====================
 
-type TabKey = "facesheet_front" | "facesheet_back" | "assessment" | "plan_draft" | "plan_final";
+type TabKey = "facesheet_front" | "facesheet_back" | "assessment" | "plan_draft" | "plan_final" | "monitoring";
 
 // 家族構成（1行分）
 type FamilyMember = {
@@ -152,6 +152,35 @@ type Assessment = {
   created_date: string;
 };
 
+// モニタリング目標達成状況（1行）
+type MonitoringGoalRow = {
+  goal: string;       // 目標内容（計画から転記）
+  status: string;     // 達成状況（達成/概ね達成/未達成/継続）
+  comment: string;    // コメント・理由
+};
+
+// モニタリングシート
+type Monitoring = {
+  id: string;
+  child_id: string;
+  org_id: string;
+  monitoring_date: string;          // 実施日
+  period_label: string;             // 回数・期（例：第1回・上半期）
+  goal_achievements: MonitoringGoalRow[]; // 目標達成状況（JSON）
+  child_condition: string;          // 本人の生活状況・様子
+  parent_opinion: string;           // 保護者の意向・感想
+  child_opinion: string;            // 本人の意向
+  support_review: string;           // 支援内容の見直し・課題
+  next_plan_date: string;           // 次回計画見直し予定日
+  staff_name: string;               // 担当者名
+  manager_name: string;             // 管理者名
+  explained_date: string;           // 保護者説明日
+  parent_confirmed_date: string;    // 保護者確認・署名日
+  notes: string;                    // 備考
+  created_at: string;
+  updated_at: string;
+};
+
 // ==================== デフォルト値 ====================
 
 function defaultFamilyMembers(): FamilyMember[] {
@@ -283,6 +312,33 @@ function defaultAssessment(childId: string): Assessment {
   };
 }
 
+function defaultMonitoring(childId: string, orgId: string): Monitoring {
+  return {
+    id: `mon_${childId}_${Date.now()}`,
+    child_id: childId,
+    org_id: orgId,
+    monitoring_date: "",
+    period_label: "",
+    goal_achievements: [
+      { goal: "", status: "", comment: "" },
+      { goal: "", status: "", comment: "" },
+      { goal: "", status: "", comment: "" },
+    ],
+    child_condition: "",
+    parent_opinion: "",
+    child_opinion: "",
+    support_review: "",
+    next_plan_date: "",
+    staff_name: "",
+    manager_name: "",
+    explained_date: "",
+    parent_confirmed_date: "",
+    notes: "",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 // ==================== タブ定義 ====================
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
@@ -291,6 +347,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: "assessment",      label: "アセスメントシート",      icon: "📊" },
   { key: "plan_draft",      label: "個別支援計画（原案）",    icon: "📝" },
   { key: "plan_final",      label: "個別支援計画（本書）",    icon: "📘" },
+  { key: "monitoring",      label: "モニタリング",            icon: "🔍" },
 ];
 
 // ==================== ページ本体 ====================
@@ -310,6 +367,7 @@ export default function DocsPage() {
   const [assessment, setAssessment] = useState<Assessment>(() => defaultAssessment(childId));
   const [planDraft, setPlanDraft] = useState<SupportPlanDraft>(() => defaultPlanDraft(childId, ""));
   const [planFinal, setPlanFinal] = useState<SupportPlanFinal>(() => defaultPlanFinal(childId, ""));
+  const [monitoring, setMonitoring] = useState<Monitoring>(() => defaultMonitoring(childId, ""));
 
   // 児童情報：まずダミーデータから探し、なければDBから取得
   const [child, setChild] = useState<Child | undefined>(DUMMY_CHILDREN.find((c) => c.id === childId));
@@ -431,9 +489,10 @@ export default function DocsPage() {
         });
       }
 
-      const [drafts, finals] = await Promise.all([
+      const [drafts, finals, monRes] = await Promise.all([
         supabase.from("ng_plan_drafts").select("*").eq("child_id", childId),
         supabase.from("ng_plan_finals").select("*").eq("child_id", childId),
+        supabase.from("ng_monitoring").select("*").eq("child_id", childId).order("monitoring_date", { ascending: false }).limit(1),
       ]);
       if (drafts.data && drafts.data.length > 0) {
         const row = drafts.data[0] as Record<string, unknown>;
@@ -452,6 +511,17 @@ export default function DocsPage() {
           short_term_goals: (() => { try { return typeof row.short_term_goals === "string" ? JSON.parse(row.short_term_goals) : (row.short_term_goals ?? []); } catch { return []; } })(),
           support_items: (() => { try { return typeof row.support_items === "string" ? JSON.parse(row.support_items) : (row.support_items ?? []); } catch { return []; } })(),
         } as SupportPlanFinal);
+      }
+      if (monRes.data && monRes.data.length > 0) {
+        const row = monRes.data[0] as Record<string, unknown>;
+        setMonitoring({
+          ...defaultMonitoring(childId, String(row.org_id ?? "")),
+          ...row,
+          goal_achievements: (() => {
+            try { return typeof row.goal_achievements === "string" ? JSON.parse(row.goal_achievements) : (row.goal_achievements ?? []); }
+            catch { return []; }
+          })(),
+        } as Monitoring);
       }
 
       setLoading(false);
@@ -496,6 +566,12 @@ export default function DocsPage() {
           ...planFinal,
           short_term_goals: JSON.stringify(planFinal.short_term_goals),
           support_items: JSON.stringify(planFinal.support_items),
+          updated_at: now,
+        } as unknown as Record<string, unknown>);
+      } else if (tab === "monitoring") {
+        await saveRecord("ng_monitoring", {
+          ...monitoring,
+          goal_achievements: JSON.stringify(monitoring.goal_achievements),
           updated_at: now,
         } as unknown as Record<string, unknown>);
       } else {
@@ -643,6 +719,9 @@ export default function DocsPage() {
                 }}
               />
             )}
+            {tab === "monitoring" && (
+              <MonitoringForm monitoring={monitoring} onChange={setMonitoring} />
+            )}
 
             {/* 保存・印刷ボタン */}
             <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
@@ -681,6 +760,9 @@ export default function DocsPage() {
         )}
         {tab === "plan_final" && (
           <PrintSupportPlan plan={planFinal} child={child} fac={fac} isDraft={false} />
+        )}
+        {tab === "monitoring" && (
+          <PrintMonitoring monitoring={monitoring} child={child} fac={fac} />
         )}
       </div>
     </div>
@@ -1863,6 +1945,192 @@ function PrintAssessment({ assessment, child }: { assessment: Assessment; child:
             <th style={{ width: 80 }}>作成日</th>
             <td>{assessment.created_date}</td>
           </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ==================== モニタリングフォーム ====================
+
+const ACHIEVEMENT_OPTIONS = ["達成", "概ね達成", "継続中", "未達成"];
+
+function MonitoringForm({ monitoring, onChange }: {
+  monitoring: Monitoring;
+  onChange: (v: Monitoring) => void;
+}) {
+  const set = <K extends keyof Monitoring>(field: K, val: Monitoring[K]) =>
+    onChange({ ...monitoring, [field]: val });
+
+  const setGoalRow = (idx: number, field: keyof MonitoringGoalRow, val: string) => {
+    const rows = monitoring.goal_achievements.map((r, i) =>
+      i === idx ? { ...r, [field]: val } : r
+    );
+    onChange({ ...monitoring, goal_achievements: rows });
+  };
+
+  const addGoalRow = () =>
+    onChange({ ...monitoring, goal_achievements: [...monitoring.goal_achievements, { goal: "", status: "", comment: "" }] });
+
+  const removeGoalRow = (idx: number) =>
+    onChange({ ...monitoring, goal_achievements: monitoring.goal_achievements.filter((_, i) => i !== idx) });
+
+  return (
+    <>
+      <SectionCard title="実施情報">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+          <FormRow label="実施日">
+            <input className="form-input" type="date" value={monitoring.monitoring_date} onChange={(e) => set("monitoring_date", e.target.value)} />
+          </FormRow>
+          <FormRow label="回数・期（例：第1回、上半期）">
+            <input className="form-input" value={monitoring.period_label} placeholder="例：第1回・上半期" onChange={(e) => set("period_label", e.target.value)} />
+          </FormRow>
+          <FormRow label="担当者名">
+            <input className="form-input" value={monitoring.staff_name} onChange={(e) => set("staff_name", e.target.value)} />
+          </FormRow>
+          <FormRow label="管理者名">
+            <input className="form-input" value={monitoring.manager_name} onChange={(e) => set("manager_name", e.target.value)} />
+          </FormRow>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="目標達成状況">
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                <th style={{ padding: "6px 8px", border: "1px solid #e2e8f0", fontWeight: 600, color: "#64748b" }}>目標内容</th>
+                <th style={{ padding: "6px 8px", border: "1px solid #e2e8f0", fontWeight: 600, color: "#64748b", width: 130 }}>達成状況</th>
+                <th style={{ padding: "6px 8px", border: "1px solid #e2e8f0", fontWeight: 600, color: "#64748b" }}>コメント・理由</th>
+                <th style={{ padding: "6px 8px", border: "1px solid #e2e8f0", width: 36 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {monitoring.goal_achievements.map((row, i) => (
+                <tr key={i}>
+                  <td style={{ border: "1px solid #e2e8f0", padding: 4 }}>
+                    <input className="form-input" value={row.goal} placeholder="目標を入力" onChange={(e) => setGoalRow(i, "goal", e.target.value)} />
+                  </td>
+                  <td style={{ border: "1px solid #e2e8f0", padding: 4 }}>
+                    <select className="form-input" value={row.status} onChange={(e) => setGoalRow(i, "status", e.target.value)}>
+                      <option value="">選択</option>
+                      {ACHIEVEMENT_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ border: "1px solid #e2e8f0", padding: 4 }}>
+                    <input className="form-input" value={row.comment} onChange={(e) => setGoalRow(i, "comment", e.target.value)} />
+                  </td>
+                  <td style={{ border: "1px solid #e2e8f0", padding: 4, textAlign: "center" }}>
+                    <button type="button" onClick={() => removeGoalRow(i)}
+                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, fontFamily: "inherit" }}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" onClick={addGoalRow}
+          className="btn-secondary"
+          style={{ marginTop: 8, fontSize: 12, padding: "6px 14px" }}>
+          ＋ 目標行を追加
+        </button>
+      </SectionCard>
+
+      <SectionCard title="状況確認">
+        <FormRow label="本人の生活状況・施設での様子">
+          <textarea className="form-input" style={{ minHeight: 80, resize: "vertical" }} value={monitoring.child_condition} onChange={(e) => set("child_condition", e.target.value)} />
+        </FormRow>
+        <FormRow label="本人の意向">
+          <textarea className="form-input" style={{ minHeight: 60, resize: "vertical" }} value={monitoring.child_opinion} onChange={(e) => set("child_opinion", e.target.value)} />
+        </FormRow>
+        <FormRow label="保護者の意向・感想">
+          <textarea className="form-input" style={{ minHeight: 80, resize: "vertical" }} value={monitoring.parent_opinion} onChange={(e) => set("parent_opinion", e.target.value)} />
+        </FormRow>
+      </SectionCard>
+
+      <SectionCard title="支援の見直し・今後の方針">
+        <FormRow label="支援内容の見直し・課題">
+          <textarea className="form-input" style={{ minHeight: 80, resize: "vertical" }} value={monitoring.support_review} onChange={(e) => set("support_review", e.target.value)} />
+        </FormRow>
+        <FormRow label="次回計画見直し予定日">
+          <input className="form-input" type="date" value={monitoring.next_plan_date} onChange={(e) => set("next_plan_date", e.target.value)} />
+        </FormRow>
+        <FormRow label="備考">
+          <textarea className="form-input" style={{ minHeight: 60, resize: "vertical" }} value={monitoring.notes} onChange={(e) => set("notes", e.target.value)} />
+        </FormRow>
+      </SectionCard>
+
+      <SectionCard title="説明・同意">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+          <FormRow label="保護者への説明日">
+            <input className="form-input" type="date" value={monitoring.explained_date} onChange={(e) => set("explained_date", e.target.value)} />
+          </FormRow>
+          <FormRow label="保護者確認・署名日">
+            <input className="form-input" type="date" value={monitoring.parent_confirmed_date} onChange={(e) => set("parent_confirmed_date", e.target.value)} />
+          </FormRow>
+        </div>
+      </SectionCard>
+    </>
+  );
+}
+
+// ==================== モニタリング印刷レイアウト ====================
+
+function PrintMonitoring({ monitoring, child, fac }: {
+  monitoring: Monitoring;
+  child: Child;
+  fac?: { name: string };
+}) {
+  return (
+    <div>
+      <div className="print-title">モニタリングシート</div>
+      <table className="print-table" style={{ marginBottom: 12 }}>
+        <tbody>
+          <tr><th>児童氏名</th><td>{child.name}</td><th>施設名</th><td>{fac?.name}</td></tr>
+          <tr><th>実施日</th><td>{monitoring.monitoring_date}</td><th>回数・期</th><td>{monitoring.period_label}</td></tr>
+          <tr><th>担当者</th><td>{monitoring.staff_name}</td><th>管理者</th><td>{monitoring.manager_name}</td></tr>
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">■ 目標達成状況</div>
+      <table className="print-table" style={{ marginBottom: 12 }}>
+        <thead>
+          <tr><th>目標内容</th><th style={{ width: 80 }}>達成状況</th><th>コメント</th></tr>
+        </thead>
+        <tbody>
+          {monitoring.goal_achievements.map((row, i) => (
+            <tr key={i}>
+              <td>{row.goal}</td>
+              <td style={{ textAlign: "center" }}>{row.status}</td>
+              <td>{row.comment}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">■ 状況確認</div>
+      <table className="print-table" style={{ marginBottom: 12 }}>
+        <tbody>
+          <tr><th style={{ width: 120 }}>本人の様子</th><td>{monitoring.child_condition}</td></tr>
+          <tr><th>本人の意向</th><td>{monitoring.child_opinion}</td></tr>
+          <tr><th>保護者の意向</th><td>{monitoring.parent_opinion}</td></tr>
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">■ 支援の見直し</div>
+      <table className="print-table" style={{ marginBottom: 12 }}>
+        <tbody>
+          <tr><th style={{ width: 120 }}>見直し・課題</th><td>{monitoring.support_review}</td></tr>
+          <tr><th>次回計画見直し日</th><td>{monitoring.next_plan_date}</td></tr>
+          <tr><th>備考</th><td>{monitoring.notes}</td></tr>
+        </tbody>
+      </table>
+
+      <div className="print-subtitle">■ 説明・同意</div>
+      <table className="print-table">
+        <tbody>
+          <tr><th style={{ width: 120 }}>保護者への説明日</th><td>{monitoring.explained_date}</td><th style={{ width: 120 }}>保護者確認・署名日</th><td>{monitoring.parent_confirmed_date}</td></tr>
+          <tr><th>保護者署名</th><td style={{ height: 40 }}></td><th>管理者確認</th><td></td></tr>
         </tbody>
       </table>
     </div>
