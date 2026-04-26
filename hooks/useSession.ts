@@ -1,22 +1,29 @@
 // ==================== セッションフック ====================
-// localStorageから同期的にセッションを取得する。
-// useEffectを使わないため、ページ表示時の余分な再レンダリングをなくし高速化。
+// useEffectでlocalStorageを読み込む。
+// SSR時はnullを返し、マウント後に実際のセッションをセットする。
+// → Hydrationエラーを防ぐ正しいパターン
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { UserSession } from "@/types";
 
 export function useSession(): UserSession | null {
-  // useState の初期化関数でlocalStorageを同期的に読み込む
-  // → 最初のレンダリング時点でsessionが確定するため、余分な再描画ゼロ
-  const [session] = useState<UserSession | null>(() => {
-    if (typeof window === "undefined") return null;
+  const [session, setSession] = useState<UserSession | null>(null);
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("gg_session");
-      if (!raw) return null;
-      return JSON.parse(raw) as UserSession;
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as UserSession & { expires_at?: number };
+      // セッション期限チェック
+      if (parsed.expires_at && Date.now() > parsed.expires_at) {
+        localStorage.removeItem("gg_session");
+        return;
+      }
+      setSession(parsed);
     } catch {
-      return null;
+      // 破損データは無視
     }
-  });
+  }, []);
+
   return session;
 }
