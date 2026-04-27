@@ -51,9 +51,12 @@ export type Child = {
   emergency_contact?: string;
   parent_name?: string;
   parent_phone?: string;
-  school?: string;       // 学校名
-  notes?: string;        // 注意事項
-  support_content?: string; // 支援内容
+  school?: string;           // 学校名
+  recipient_number?: string; // 受給者証番号
+  limit_manager?: string;    // 上限管理事業所名
+  payment_limit?: number;    // 負担上限月額（円）
+  notes?: string;            // 注意事項
+  support_content?: string;  // 支援内容
   active: boolean;
   created_at: string;
 };
@@ -72,6 +75,7 @@ export type AttendanceRecord = {
   transport_to?: boolean;  // 送迎（来所）
   transport_from?: boolean;// 送迎（帰り）
   status: "来所" | "欠席" | "体調不良" | "キャンセル" | "休所";
+  photo_url?: string;      // 来所時の写真URL
   memo?: string;
   recorded_by?: string;  // 記録者
   created_at: string;
@@ -104,6 +108,7 @@ export type MessageRecord = {
   body: string;
   photo_url?: string;
   is_read: boolean;
+  read_at?: string;    // 既読日時
   replies: string[];
   created_at: string;
 };

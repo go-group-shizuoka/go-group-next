@@ -19,7 +19,7 @@ type StaffMember = {
 
 const EMPTY_STAFF = {
   name: "", role: "staff" as "admin" | "manager" | "staff",
-  login_id: "", facility_id: "",
+  login_id: "", password: "", facility_id: "",
 };
 
 function genId() { return crypto.randomUUID(); }
@@ -57,6 +57,7 @@ export default function AdminPage() {
   const [staffForm, setStaffForm] = useState({ ...EMPTY_STAFF });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffSaved, setStaffSaved] = useState(false);
+  const [staffError, setStaffError] = useState("");
 
   if (!session) return null;
 
@@ -64,26 +65,49 @@ export default function AdminPage() {
   // staffは閲覧のみ（フォームを隠す）
   const isManager = session.role === "admin" || session.role === "manager";
 
-  // 職員登録
+  // 職員登録（Supabase Auth + ng_staffテーブルへ登録）
   const handleSaveStaff = async () => {
-    if (!staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id) return;
+    if (!staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id || !staffForm.password.trim()) return;
     setStaffSaving(true);
-    const staff: StaffMember = {
-      id: genId(),
-      org_id: session!.org_id,
-      facility_id: staffForm.facility_id || session!.selected_facility_id,
-      name: staffForm.name.trim(),
-      role: staffForm.role,
-      login_id: staffForm.login_id.trim(),
-      created_at: new Date().toISOString(),
-    };
-    await saveRecord("ng_staff", staff as unknown as Record<string, unknown>);
-    setStaffList((prev) => [staff, ...prev]);
-    setStaffForm({ ...EMPTY_STAFF });
-    setShowStaffForm(false);
+    setStaffError("");
+    try {
+      const res = await fetch("/api/admin/create-staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          login_id: staffForm.login_id.trim(),
+          password: staffForm.password.trim(),
+          name: staffForm.name.trim(),
+          role: staffForm.role,
+          facility_id: staffForm.facility_id || session!.selected_facility_id,
+          org_id: session!.org_id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setStaffError(json.error ?? "登録に失敗しました");
+        setStaffSaving(false);
+        return;
+      }
+      // 画面上のリストに追加
+      const newStaff: StaffMember = {
+        id: genId(),
+        org_id: session!.org_id,
+        facility_id: staffForm.facility_id || session!.selected_facility_id,
+        name: staffForm.name.trim(),
+        role: staffForm.role,
+        login_id: staffForm.login_id.trim(),
+        created_at: new Date().toISOString(),
+      };
+      setStaffList((prev) => [newStaff, ...prev]);
+      setStaffForm({ ...EMPTY_STAFF });
+      setShowStaffForm(false);
+      setStaffSaved(true);
+      setTimeout(() => setStaffSaved(false), 3000);
+    } catch (e) {
+      setStaffError(String(e));
+    }
     setStaffSaving(false);
-    setStaffSaved(true);
-    setTimeout(() => setStaffSaved(false), 3000);
   };
 
   const handleDayToggle = (day: string) => {
@@ -361,6 +385,10 @@ export default function AdminPage() {
                   <input className="form-input" placeholder="例: tanaka_m" value={staffForm.login_id} onChange={(e) => setStaffForm(p => ({ ...p, login_id: e.target.value }))} />
                 </div>
                 <div>
+                  <label style={labelStyle}>初期パスワード * <span style={{ color: "#94a3b8", fontWeight: 400 }}>（8文字以上）</span></label>
+                  <input className="form-input" type="password" placeholder="初期パスワードを設定" value={staffForm.password} onChange={(e) => setStaffForm(p => ({ ...p, password: e.target.value }))} />
+                </div>
+                <div>
                   <label style={labelStyle}>役割</label>
                   <select className="form-input" value={staffForm.role} onChange={(e) => setStaffForm(p => ({ ...p, role: e.target.value as "admin" | "manager" | "staff" }))}>
                     <option value="staff">職員</option>
@@ -376,13 +404,19 @@ export default function AdminPage() {
                   </select>
                 </div>
               </div>
+              {/* エラー表示 */}
+              {staffError && (
+                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", marginTop: 14, fontSize: 12, color: "#dc2626", fontWeight: 600 }}>
+                  ⚠️ {staffError}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
                 <button className="btn-primary" onClick={handleSaveStaff}
-                  disabled={staffSaving || !staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id}
+                  disabled={staffSaving || !staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id || !staffForm.password.trim()}
                   style={{ minWidth: 100 }}>
-                  {staffSaving ? "保存中..." : "登録する"}
+                  {staffSaving ? "登録中..." : "✅ 登録する"}
                 </button>
-                <button className="btn-secondary" onClick={() => setShowStaffForm(false)}>キャンセル</button>
+                <button className="btn-secondary" onClick={() => { setShowStaffForm(false); setStaffError(""); }}>キャンセル</button>
               </div>
             </div>
           )}

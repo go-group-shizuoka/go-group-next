@@ -26,6 +26,9 @@ const EMPTY_FORM = {
   name: "", name_kana: "", dob: "", grade: "",
   gender: "" as "" | "男" | "女",
   diagnosis: "", school: "",
+  recipient_number: "",    // 受給者証番号
+  limit_manager: "",       // 上限管理事業所
+  payment_limit: "" as string, // 負担上限月額
   use_days: [] as string[],
   has_transport: false,
   parent_name: "", parent_phone: "",
@@ -81,6 +84,9 @@ export default function ChildrenNewPage() {
       gender: (form.gender as "男" | "女") || undefined,
       diagnosis: form.diagnosis || undefined,
       school: form.school || undefined,
+      recipient_number: form.recipient_number || undefined,
+      limit_manager: form.limit_manager || undefined,
+      payment_limit: form.payment_limit ? Number(form.payment_limit) : undefined,
       use_days: form.use_days,
       has_transport: form.has_transport,
       parent_name: form.parent_name || undefined,
@@ -170,6 +176,25 @@ export default function ChildrenNewPage() {
               value={form.school} onChange={(e) => setForm(p => ({ ...p, school: e.target.value }))} />
           </div>
           <div>{/* スペーサー */}</div>
+
+          {/* 受給者証番号 */}
+          <div>
+            <label style={labelStyle}>受給者証番号</label>
+            <input className="form-input" placeholder="例：0123456789"
+              value={form.recipient_number} onChange={(e) => setForm(p => ({ ...p, recipient_number: e.target.value }))} />
+          </div>
+          <div>
+            <label style={labelStyle}>負担上限月額（円）</label>
+            <input className="form-input" type="number" placeholder="例：4600"
+              value={form.payment_limit} onChange={(e) => setForm(p => ({ ...p, payment_limit: e.target.value }))} />
+          </div>
+
+          {/* 上限管理事業所 */}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle}>上限管理事業所名</label>
+            <input className="form-input" placeholder="例：○○事業所"
+              value={form.limit_manager} onChange={(e) => setForm(p => ({ ...p, limit_manager: e.target.value }))} />
+          </div>
 
           {/* 所属施設 */}
           <div style={{ gridColumn: "1 / -1" }}>

@@ -200,8 +200,11 @@ function BasicInfoTab({
       { label: "性別",         value: child.gender ?? "—" },
       { label: "学年",         value: child.grade ?? "—" },
       { label: "診断名",       value: child.diagnosis ?? "—" },
-      { label: "学校名",       value: child.school ?? "—" },
-      { label: "障害支援区分", value: child.disability_level ?? "—" },
+      { label: "学校名",           value: child.school ?? "—" },
+      { label: "受給者証番号",     value: child.recipient_number ?? "—" },
+      { label: "負担上限月額",     value: child.payment_limit ? `¥${child.payment_limit.toLocaleString()}` : "—" },
+      { label: "上限管理事業所",   value: child.limit_manager ?? "—" },
+      { label: "障害支援区分",     value: child.disability_level ?? "—" },
       { label: "所属施設",     value: fac?.name ?? "—" },
       { label: "利用曜日",     value: child.use_days ? child.use_days.join("・") + "曜" : "—" },
       { label: "送迎",         value: child.has_transport ? "あり" : "なし" },
@@ -249,6 +252,15 @@ function BasicInfoTab({
       </EditRow>
       <EditRow label="学校名">
         <input className="form-input" value={child.school ?? ""} placeholder="例: ○○小学校" onChange={(e) => onChange("school", e.target.value)} />
+      </EditRow>
+      <EditRow label="受給者証番号">
+        <input className="form-input" value={child.recipient_number ?? ""} placeholder="例: 0123456789" onChange={(e) => onChange("recipient_number", e.target.value)} />
+      </EditRow>
+      <EditRow label="負担上限月額（円）">
+        <input className="form-input" type="number" value={child.payment_limit ?? ""} placeholder="例: 4600" onChange={(e) => onChange("payment_limit", e.target.value)} />
+      </EditRow>
+      <EditRow label="上限管理事業所">
+        <input className="form-input" value={child.limit_manager ?? ""} placeholder="例: ○○事業所" onChange={(e) => onChange("limit_manager", e.target.value)} />
       </EditRow>
       <EditRow label="障害支援区分">
         <input className="form-input" value={child.disability_level ?? ""} placeholder="例: 区分3" onChange={(e) => onChange("disability_level", e.target.value)} />

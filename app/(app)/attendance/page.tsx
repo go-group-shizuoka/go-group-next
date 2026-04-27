@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByDate } from "@/lib/supabase";
+import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
 import * as XLSX from "xlsx";
 import { useSession } from "@/hooks/useSession";
@@ -21,11 +21,14 @@ function getTodayDow() {
 
 export default function AttendancePage() {
   const session = useSession();
-  const [records, setRecords] = useState<Record<string, { arrive?: string; depart?: string; temp?: string }>>({});
+  const [records, setRecords] = useState<Record<string, { arrive?: string; depart?: string; temp?: string; photo_url?: string }>>({});
   const [selChild, setSelChild] = useState<string | null>(null);
   const [inputTemp, setInputTemp] = useState("");
   const [inputTime, setInputTime] = useState(nowHHMM());
   const [loadingDB, setLoadingDB] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Supabaseから本日の入退室記録を読み込む
   useEffect(() => {
@@ -38,12 +41,13 @@ export default function AttendancePage() {
       todayISO()
     ).then((rows) => {
       if (rows.length > 0) {
-        const map: Record<string, { arrive?: string; depart?: string; temp?: string }> = {};
+        const map: Record<string, { arrive?: string; depart?: string; temp?: string; photo_url?: string }> = {};
         rows.forEach((r) => {
           map[r.child_id] = {
             arrive: r.arrive_time ?? undefined,
             depart: r.depart_time ?? undefined,
             temp: r.temperature ?? undefined,
+            photo_url: r.photo_url ?? undefined,
           };
         });
         setRecords(map);
@@ -89,8 +93,19 @@ export default function AttendancePage() {
     XLSX.writeFile(wb, `入退室記録_${fac?.name}_${todayISO()}.xlsx`);
   };
 
-  const handleArrive = (childId: string) => {
+  const handleArrive = async (childId: string) => {
     const child = DUMMY_CHILDREN.find((c) => c.id === childId);
+    setUploading(true);
+
+    // 写真アップロード
+    let photoUrl: string | undefined;
+    if (photoFile) {
+      const ext = photoFile.name.split(".").pop();
+      const path = `attendance/${session!.org_id}/${todayISO()}_${childId}.${ext}`;
+      const url = await uploadPhoto(photoFile, path);
+      if (url) photoUrl = url;
+    }
+
     const rec: AttendanceRecord = {
       id: `${childId}_${todayISO()}`,
       org_id: session!.org_id,
@@ -102,18 +117,21 @@ export default function AttendancePage() {
       temperature: inputTemp || undefined,
       transport_to: child?.has_transport ?? false,
       status: "来所",
+      photo_url: photoUrl,
       recorded_by: session!.name,
       created_at: new Date().toISOString(),
     };
-    // Supabaseに保存
     saveRecord("ng_attendance", rec as unknown as Record<string, unknown>);
     setRecords((prev) => ({
       ...prev,
-      [childId]: { ...prev[childId], arrive: inputTime, temp: inputTemp || "—" },
+      [childId]: { ...prev[childId], arrive: inputTime, temp: inputTemp || "—", photo_url: photoUrl },
     }));
     setSelChild(null);
     setInputTemp("");
     setInputTime(nowHHMM());
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setUploading(false);
   };
 
   const handleDepart = (childId: string) => {
@@ -196,10 +214,35 @@ export default function AttendancePage() {
                 />
               </div>
             </div>
+            {/* 写真アップロード（来所時のみ） */}
+            {!rec.arrive && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>
+                  📷 来所時の写真（任意）
+                </label>
+                <input type="file" accept="image/*" capture="environment"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setPhotoFile(f);
+                    setPhotoPreview(URL.createObjectURL(f));
+                  }}
+                  style={{ fontSize: 12, color: "#475569" }} />
+                {photoPreview && (
+                  <div style={{ marginTop: 6, position: "relative", display: "inline-block" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photoPreview} alt="プレビュー"
+                      style={{ maxWidth: 120, maxHeight: 90, borderRadius: 6, objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                    <button onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                      style={{ position: "absolute", top: -6, right: -6, background: "#ef4444", color: "white", border: "none", borderRadius: "50%", width: 18, height: 18, fontSize: 10, cursor: "pointer" }}>✕</button>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               {!rec.arrive && (
-                <button className="btn-primary" onClick={() => handleArrive(selChild)}>
-                  🟢 来所記録
+                <button className="btn-primary" onClick={() => handleArrive(selChild)} disabled={uploading}>
+                  {uploading ? "保存中..." : "🟢 来所記録"}
                 </button>
               )}
               {rec.arrive && !rec.depart && (
@@ -211,7 +254,7 @@ export default function AttendancePage() {
                   🏠 退所記録
                 </button>
               )}
-              <button className="btn-secondary" onClick={() => setSelChild(null)}>
+              <button className="btn-secondary" onClick={() => { setSelChild(null); setPhotoFile(null); setPhotoPreview(null); }}>
                 キャンセル
               </button>
             </div>
@@ -263,6 +306,12 @@ export default function AttendancePage() {
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{child.name}</div>
                         <div style={{ fontSize: 10, color: "#94a3b8" }}>{child.grade}</div>
                       </div>
+                      {/* 来所写真サムネイル */}
+                      {rec.photo_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={rec.photo_url} alt="来所写真"
+                          style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                      )}
                     </div>
                   </td>
                   <td style={{ fontSize: 13 }}>{rec.temp ?? "—"}</td>

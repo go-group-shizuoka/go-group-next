@@ -157,6 +157,8 @@ export default function BillingPage() {
   const exportExcel = () => {
     const data = rows.map((r) => ({
       "氏名": r.child.name,
+      "受給者証番号": r.child.recipient_number ?? "",
+      "上限管理事業所": r.child.limit_manager ?? "",
       "学年": r.child.grade ?? "",
       "診断名": r.child.diagnosis ?? "",
       "利用日数": r.useDays,
@@ -275,7 +277,8 @@ export default function BillingPage() {
             <thead>
               <tr>
                 <th>氏名</th>
-                <th>学年</th>
+                <th>受給者証番号</th>
+                <th>上限管理事業所</th>
                 <th style={{ textAlign: "right" }}>利用日数</th>
                 <th style={{ textAlign: "right" }}>1回単価</th>
                 <th style={{ textAlign: "right" }}>送迎加算</th>
@@ -292,7 +295,8 @@ export default function BillingPage() {
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{row.child.name}</div>
                     <div style={{ fontSize: 10, color: "#94a3b8" }}>{row.child.name_kana}</div>
                   </td>
-                  <td style={{ fontSize: 12 }}>{row.child.grade ?? "—"}</td>
+                  <td style={{ fontSize: 12, color: "#475569" }}>{row.child.recipient_number ?? "—"}</td>
+                  <td style={{ fontSize: 12, color: "#475569" }}>{row.child.limit_manager ?? "—"}</td>
                   <td style={{ textAlign: "right" }}>
                     <span style={{ fontWeight: 700, fontSize: 15, color: row.useDays > 0 ? "#0077b6" : "#94a3b8" }}>
                       {row.useDays}

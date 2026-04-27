@@ -139,12 +139,21 @@ export default function MessagesPage() {
     const newReplyText = reply;
     setMessages((p) => p.map((m) => {
       if (m.id !== msgId) return m;
-      const updated = { ...m, replies: [...m.replies, newReplyText], is_read: true };
-      // Supabaseに返信を保存
+      const updated = { ...m, replies: [...m.replies, newReplyText], is_read: true, read_at: nowStr() };
       saveRecord("ng_messages", updated as unknown as Record<string, unknown>);
       return updated;
     }));
     setReply("");
+  };
+
+  // 既読にする（保護者が確認した想定）
+  const handleMarkRead = (msgId: string) => {
+    setMessages((p) => p.map((m) => {
+      if (m.id !== msgId || m.is_read) return m;
+      const updated = { ...m, is_read: true, read_at: nowStr() };
+      saveRecord("ng_messages", updated as unknown as Record<string, unknown>);
+      return updated;
+    }));
   };
 
   const openThread = (childId: string) => {
@@ -216,6 +225,21 @@ export default function MessagesPage() {
                   <div style={{ fontSize: 10, color: "#94a3b8", textAlign: "right", marginBottom: 3 }}>{msg.from_name} ・ {msg.created_at}</div>
                   <div style={{ background: "#0077b6", color: "white", borderRadius: "12px 12px 2px 12px", padding: "10px 14px", fontSize: 13, lineHeight: 1.7 }}>
                     {msg.body}
+                  </div>
+                  {/* 既読ステータス */}
+                  <div style={{ textAlign: "right", marginTop: 4, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
+                    {msg.is_read ? (
+                      <span style={{ fontSize: 10, color: "#059669", fontWeight: 700 }}>
+                        ✓ 既読{msg.read_at ? ` ${msg.read_at}` : ""}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleMarkRead(msg.id)}
+                        style={{ fontSize: 10, color: "#94a3b8", background: "none", border: "1px solid #e2e8f0", borderRadius: 10, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        未読 → 既読にする
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
