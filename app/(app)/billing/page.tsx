@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { fetchByFacility, saveRecord } from "@/lib/supabase";
 import type { AttendanceRecord, Child } from "@/types";
-// xlsxはexceljsに移行
+// Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
 
 // 放課後等デイサービスの基本的な単価設定（簡易版）
@@ -153,134 +153,147 @@ export default function BillingPage() {
     setTimeout(() => setSavedMsg(""), 4000);
   };
 
-  // Excel出力（exceljs：枠線・色付き・印刷対応）
+  // Excel出力（xlsx-js-style：枠線・色付き・印刷対応）
   const exportExcel = async () => {
-    const ExcelJS = (await import("exceljs")).default;
-    const wb = new ExcelJS.Workbook();
+    const XLSXStyle = (await import("xlsx-js-style")).default;
 
-    const thin = { style: "thin" as const, color: { argb: "FFCCCCCC" } };
+    const thin = { style: "thin", color: { rgb: "CCCCCC" } };
     const bd = { top: thin, left: thin, bottom: thin, right: thin };
+    // 12列分の列名
+    const COLS = ["A","B","C","D","E","F","G","H","I","J","K","L"];
+    const colWidths = [
+      { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 6 },
+      { wch: 8 },  { wch: 12 }, { wch: 8 },  { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
+    ];
 
     // ===== 請求明細シート =====
-    const ws = wb.addWorksheet("請求一覧", {
-      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, paperSize: 9 },
-    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ws: Record<string, any> = {};
+    const merges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
 
-    // タイトル
-    ws.mergeCells(1, 1, 1, 13);
-    const titleCell = ws.getCell(1, 1);
-    titleCell.value = `${fac?.name}　請求一覧　${selYear}年${selMonth}月`;
-    titleCell.font = { bold: true, size: 13, color: { argb: "FF0A2540" } };
-    titleCell.alignment = { horizontal: "center", vertical: "middle" };
-    ws.getRow(1).height = 26;
+    // タイトル行
+    ws["A1"] = {
+      v: `${fac?.name}　請求一覧　${selYear}年${selMonth}月`, t: "s",
+      s: {
+        font: { bold: true, sz: 13, color: { rgb: "0A2540" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      },
+    };
 
-    // ヘッダー
-    const headers = ["氏名", "受給者証番号", "上限管理事業所", "学年", "利用日数", "1回単価(円)", "送迎日数", "送迎加算(円)", "合計額(円)", "負担上限(円)", "利用者負担(円)", "給付費(円)"];
-    const colWidths = [14, 14, 18, 6, 8, 12, 8, 12, 12, 12, 14, 12];
-    ws.getRow(2).height = 24;
+    // ヘッダー行
+    const headers = ["氏名","受給者証番号","上限管理事業所","学年","利用日数","1回単価(円)","送迎日数","送迎加算(円)","合計額(円)","負担上限(円)","利用者負担(円)","給付費(円)"];
     headers.forEach((h, i) => {
-      const cell = ws.getCell(2, i + 1);
-      cell.value = h;
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      cell.border = bd;
-      ws.getColumn(i + 1).width = colWidths[i];
+      ws[`${COLS[i]}2`] = {
+        v: h, t: "s",
+        s: {
+          fill: { patternType: "solid", fgColor: { rgb: "0A2540" } },
+          font: { bold: true, color: { rgb: "FFFFFF" }, sz: 10 },
+          alignment: { horizontal: "center", vertical: "center" },
+          border: bd,
+        },
+      };
     });
 
     // データ行
     rows.forEach((row, idx) => {
-      const r = ws.getRow(idx + 3);
-      r.height = 20;
-      const bg = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: idx % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" } };
+      const rowNum = idx + 3;
+      const bgRgb = idx % 2 === 0 ? "F8FAFC" : "FFFFFF";
       const vals: (string | number)[] = [
         row.child.name,
         row.child.recipient_number ?? "",
         row.child.limit_manager ?? "",
         row.child.grade ?? "",
-        row.useDays,
-        row.unitPrice,
-        row.transportDays,
-        row.transportAddition,
-        row.totalAmount,
-        row.burdenCap,
-        row.userBurden,
-        row.publicBurden,
+        row.useDays, row.unitPrice,
+        row.transportDays, row.transportAddition,
+        row.totalAmount, row.burdenCap,
+        row.userBurden, row.publicBurden,
       ];
       vals.forEach((v, i) => {
-        const cell = r.getCell(i + 1);
-        cell.value = v;
-        cell.border = bd;
-        cell.fill = bg;
-        cell.font = { size: 10 };
-        if (i >= 4) {
-          cell.alignment = { horizontal: "right", vertical: "middle" };
-          if (typeof v === "number" && v > 0) {
-            cell.numFmt = "#,##0";
-            if (i === 10) cell.font = { bold: true, color: { argb: "FFD97706" }, size: 10 };
-            if (i === 11) cell.font = { bold: true, color: { argb: "FF7C3AED" }, size: 10 };
-            if (i === 8)  cell.font = { bold: true, color: { argb: "FF059669" }, size: 10 };
-          }
-        } else {
-          cell.alignment = { horizontal: "left", vertical: "middle" };
-          if (i === 0) cell.font = { bold: true, size: 10 };
-        }
+        let fontRgb = "374151";
+        if (i === 0) fontRgb = "0A2540";
+        if (i === 8)  fontRgb = "059669";
+        if (i === 10) fontRgb = "D97706";
+        if (i === 11) fontRgb = "7C3AED";
+        const isBold = i === 0 || [8, 10, 11].includes(i);
+        const isNum = typeof v === "number";
+
+        ws[`${COLS[i]}${rowNum}`] = {
+          v, t: isNum ? "n" : "s",
+          s: {
+            font: { bold: isBold, sz: 10, color: { rgb: fontRgb } },
+            alignment: { horizontal: i >= 4 ? "right" : "left", vertical: "center" },
+            border: bd,
+            fill: { patternType: "solid", fgColor: { rgb: bgRgb } },
+            ...(isNum && i >= 4 ? { numFmt: "#,##0" } : {}),
+          },
+        };
       });
     });
 
     // 合計行
-    const totalRow = ws.getRow(rows.length + 3);
-    totalRow.height = 22;
-    const totalVals: (string | number)[] = ["合計", "", "", "", totals.useDays, "", totals.transportDays, totals.transportAddition, totals.total, "", totals.userBurden, totals.publicBurden];
+    const totalRowNum = rows.length + 3;
+    const totalVals: (string | number)[] = [
+      "合計", "", "", "",
+      totals.useDays, "", totals.transportDays, totals.transportAddition,
+      totals.total, "", totals.userBurden, totals.publicBurden,
+    ];
     totalVals.forEach((v, i) => {
-      const cell = totalRow.getCell(i + 1);
-      cell.value = v;
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
-      cell.border = bd;
-      if (i >= 4 && typeof v === "number") {
-        cell.alignment = { horizontal: "right", vertical: "middle" };
-        cell.numFmt = "#,##0";
-      } else {
-        cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle" };
-      }
+      const isNum = typeof v === "number";
+      ws[`${COLS[i]}${totalRowNum}`] = {
+        v, t: isNum ? "n" : "s",
+        s: {
+          fill: { patternType: "solid", fgColor: { rgb: "0A2540" } },
+          font: { bold: true, color: { rgb: "FFFFFF" }, sz: 10 },
+          alignment: { horizontal: i >= 4 ? "right" : "left", vertical: "center" },
+          border: bd,
+          ...(isNum ? { numFmt: "#,##0" } : {}),
+        },
+      };
     });
 
+    ws["!ref"] = `A1:L${totalRowNum}`;
+    ws["!merges"] = merges;
+    ws["!cols"] = colWidths;
+
     // ===== 集計サマリーシート =====
-    const ws2 = wb.addWorksheet("集計サマリー");
-    ws2.getColumn(1).width = 20;
-    ws2.getColumn(2).width = 16;
-    [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ws2: Record<string, any> = {};
+    const summaryData: [string, string | number][] = [
       ["対象施設", fac?.name ?? ""],
       ["対象月", `${selYear}年${selMonth}月`],
       ["対象児童数", `${rows.length}名`],
-      ["", ""],
       ["合計利用日数", totals.useDays],
       ["送迎加算合計", totals.transportAddition],
       ["合計請求額", totals.total],
       ["利用者負担合計", totals.userBurden],
       ["給付費合計", totals.publicBurden],
-    ].forEach((row, i) => {
-      const r = ws2.getRow(i + 1);
-      r.height = 22;
-      const c1 = r.getCell(1);
-      const c2 = r.getCell(2);
-      c1.value = row[0];
-      c2.value = row[1];
-      if (row[0]) {
-        c1.font = { bold: true, size: 10 };
-        c1.border = bd;
-        c2.border = bd;
-        if (typeof row[1] === "number") {
-          c2.numFmt = "#,##0";
-          c2.alignment = { horizontal: "right" };
-        }
-      }
+    ];
+    summaryData.forEach(([label, val], i) => {
+      const rowNum = i + 1;
+      const isNum = typeof val === "number";
+      ws2[`A${rowNum}`] = {
+        v: label, t: "s",
+        s: { font: { bold: true, sz: 10 }, border: bd },
+      };
+      ws2[`B${rowNum}`] = {
+        v: val, t: isNum ? "n" : "s",
+        s: {
+          border: bd,
+          alignment: isNum ? { horizontal: "right" } : {},
+          ...(isNum ? { numFmt: "#,##0" } : {}),
+        },
+      };
     });
+    ws2["!ref"] = `A1:B${summaryData.length}`;
+    ws2["!cols"] = [{ wch: 20 }, { wch: 16 }];
 
     // ダウンロード
-    const buf = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, ws, "請求一覧");
+    XLSXStyle.utils.book_append_sheet(wb, ws2, "集計サマリー");
+    const wbout: ArrayBuffer = XLSXStyle.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
