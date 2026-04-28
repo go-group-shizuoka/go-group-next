@@ -2,7 +2,7 @@
 // ==================== サイドバー ====================
 // 施設切替 + ナビゲーション。スマホではボトムナビに切り替え。
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
@@ -27,14 +27,14 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  // lazy init でlocalStorageを同期読み込み。setSessionは施設切替で使うため残す。
-  const [session, setSession] = useState<UserSession | null>(() => {
-    if (typeof window === "undefined") return null;
+  // useEffectでlocalStorageを読み込み（SSRとのHydrationエラーを防ぐ）
+  const [session, setSession] = useState<UserSession | null>(null);
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("gg_session");
-      return raw ? JSON.parse(raw) as UserSession : null;
-    } catch { return null; }
-  });
+      if (raw) setSession(JSON.parse(raw) as UserSession);
+    } catch {}
+  }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // 施設切替
@@ -73,14 +73,15 @@ export default function Sidebar() {
       <aside
         style={{
           width: "240px",
-          minHeight: "100vh",
+          height: "100vh",
           background: "var(--sb-bg)",
           flexDirection: "column",
           position: "fixed",
           top: 0,
           left: 0,
           zIndex: 50,
-          overflowY: "auto",
+          overflowY: "hidden",
+          display: "flex",
         }}
         className="hidden md:flex"
       >
@@ -151,8 +152,8 @@ export default function Sidebar() {
           </select>
         </div>
 
-        {/* ナビゲーション */}
-        <nav style={{ flex: 1, padding: "4px 8px" }}>
+        {/* ナビゲーション（スクロール可能） */}
+        <nav style={{ flex: 1, padding: "4px 8px", overflowY: "auto" }}>
           {visibleNav.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
@@ -192,6 +193,7 @@ export default function Sidebar() {
           style={{
             padding: "12px",
             borderTop: "1px solid rgba(255,255,255,0.08)",
+            flexShrink: 0,
           }}
         >
           <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, paddingLeft: 4 }}>
