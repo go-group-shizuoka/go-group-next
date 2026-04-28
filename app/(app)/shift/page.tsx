@@ -7,7 +7,7 @@ import { useSession } from "@/hooks/useSession";
 import { fetchByFacility, saveRecord } from "@/lib/supabase";
 import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { ShiftRecord, WorkLog } from "@/types";
-import * as XLSX from "xlsx";
+// xlsxは削除しexceljsに移行
 
 type TabKey = "shift" | "worklog";
 
@@ -148,26 +148,122 @@ export default function ShiftPage() {
     setTimeout(() => setShiftMsg(""), 3000);
   };
 
-  // シフト表をExcel出力
-  const exportShiftExcel = () => {
-    const data = staffList.map((staff) => {
-      const row: Record<string, string | number> = { "氏名": staff.name };
+  // シフト表をExcel出力（exceljs：枠線・色付き）
+  const exportShiftExcel = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("シフト表", {
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, paperSize: 9 },
+    });
+
+    const thin = { style: "thin" as const, color: { argb: "FFCCCCCC" } };
+    const bd = { top: thin, left: thin, bottom: thin, right: thin };
+
+    // ===== タイトル行 =====
+    ws.mergeCells(1, 1, 1, days.length + 2);
+    const title = ws.getCell(1, 1);
+    title.value = `${fac?.name}　シフト表　${selYear}年${selMonth}月`;
+    title.font = { bold: true, size: 13, color: { argb: "FF0A2540" } };
+    title.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 26;
+
+    // ===== ヘッダー行 =====
+    ws.getRow(2).height = 32;
+    // 氏名列ヘッダー
+    const h0 = ws.getCell(2, 1);
+    h0.value = "氏名";
+    h0.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
+    h0.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+    h0.alignment = { horizontal: "center", vertical: "middle" };
+    h0.border = bd;
+
+    days.forEach((day, i) => {
+      const dow = new Date(selYear, selMonth - 1, day).getDay();
+      const isSun = dow === 0;
+      const isSat = dow === 6;
+      const cell = ws.getCell(2, i + 2);
+      cell.value = `${day}\n${DOW[dow]}`;
+      cell.fill = {
+        type: "pattern", pattern: "solid",
+        fgColor: { argb: isSun ? "FFFCE4E4" : isSat ? "FFE4EAFE" : "FF1E3A5F" },
+      };
+      cell.font = {
+        bold: true, size: 9,
+        color: { argb: isSun ? "FFDC2626" : isSat ? "FF2563EB" : "FFFFFFFF" },
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = bd;
+    });
+
+    // 出勤日数ヘッダー
+    const hLast = ws.getCell(2, days.length + 2);
+    hLast.value = "出勤\n日数";
+    hLast.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
+    hLast.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+    hLast.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    hLast.border = bd;
+
+    // ===== データ行 =====
+    const shiftColors: Record<string, string> = {
+      "日勤": "FFDBEAFE", "早番": "FFDCFCE7", "遅番": "FFFEF9C3",
+      "休":   "FFF1F5F9", "有":   "FFF3E8FF", "欠":   "FFFEE2E2",
+    };
+    const shiftFontColors: Record<string, string> = {
+      "日勤": "FF1D4ED8", "早番": "FF15803D", "遅番": "FFB45309",
+      "休":   "FF64748B", "有":   "FF7C3AED", "欠":   "FFDC2626",
+    };
+
+    staffList.forEach((staff, rowIdx) => {
       let workDays = 0;
-      days.forEach((day) => {
+      const row = ws.getRow(rowIdx + 3);
+      row.height = 20;
+      const bgRow = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: rowIdx % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" } };
+
+      // 氏名
+      const nameCell = row.getCell(1);
+      nameCell.value = staff.name;
+      nameCell.font = { bold: true, size: 10 };
+      nameCell.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+      nameCell.border = bd;
+      nameCell.fill = bgRow;
+
+      days.forEach((day, colIdx) => {
         const key = `${staff.id}_${selYear}_${selMonth}_${day}`;
         const s = editShifts[key] ?? "";
-        const dow = DOW[new Date(selYear, selMonth - 1, day).getDay()];
-        row[`${day}(${dow})`] = s || "—";
-        if (s && s !== "休" && s !== "有" && s !== "欠" && s !== "") workDays++;
+        if (s && s !== "休" && s !== "有" && s !== "欠") workDays++;
+        const cell = row.getCell(colIdx + 2);
+        cell.value = s || "";
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = bd;
+        cell.font = { bold: !!s, size: 9, color: { argb: s ? (shiftFontColors[s] ?? "FF374151") : "FF94A3B8" } };
+        cell.fill = s && shiftColors[s]
+          ? { type: "pattern", pattern: "solid", fgColor: { argb: shiftColors[s] } }
+          : bgRow;
       });
-      row["出勤日数"] = workDays;
-      return row;
+
+      // 出勤日数
+      const wdCell = row.getCell(days.length + 2);
+      wdCell.value = workDays;
+      wdCell.font = { bold: true, size: 10, color: { argb: "FF0077B6" } };
+      wdCell.alignment = { horizontal: "center", vertical: "middle" };
+      wdCell.border = bd;
+      wdCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDBEAFE" } };
     });
-    const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 12 }, ...days.map(() => ({ wch: 5 })), { wch: 8 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "シフト表");
-    XLSX.writeFile(wb, `シフト表_${fac?.name}_${selYear}年${selMonth}月.xlsx`);
+
+    // ===== 列幅 =====
+    ws.getColumn(1).width = 14;
+    days.forEach((_, i) => { ws.getColumn(i + 2).width = 4.5; });
+    ws.getColumn(days.length + 2).width = 7;
+
+    // ===== ダウンロード =====
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `シフト表_${fac?.name}_${selYear}年${selMonth}月.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // === 出勤打刻 ===

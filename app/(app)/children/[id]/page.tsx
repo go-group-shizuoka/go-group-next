@@ -6,16 +6,17 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord } from "@/lib/supabase";
-import type { Child } from "@/types";
+import { saveRecord, supabase } from "@/lib/supabase";
+import type { Child, AttendanceRecord } from "@/types";
 
-type TabKey = "basic" | "parent" | "notes" | "support";
+type TabKey = "basic" | "parent" | "notes" | "support" | "history";
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: "basic",   label: "基本情報",   icon: "👤" },
   { key: "parent",  label: "保護者情報", icon: "👨‍👩‍👧" },
   { key: "notes",   label: "注意事項",   icon: "⚠️" },
   { key: "support", label: "支援内容",   icon: "💡" },
+  { key: "history", label: "利用履歴",   icon: "📅" },
 ];
 
 const GRADES = ["未就学（0歳）","未就学（1歳）","未就学（2歳）","未就学（3歳）","未就学（4歳）","未就学（5歳）","小1","小2","小3","小4","小5","小6","中1","中2","中3","高1","高2","高3"];
@@ -33,9 +34,31 @@ export default function ChildDetailPage() {
   const originalChild = DUMMY_CHILDREN.find((c) => c.id === id);
   const [editChild, setEditChild] = useState<Child | null>(null);
 
+  // 利用履歴用state
+  const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   useEffect(() => {
     if (originalChild) setEditChild({ ...originalChild });
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 利用履歴をSupabaseから取得
+  useEffect(() => {
+    if (!id || tab !== "history") return;
+    setHistoryLoading(true);
+    supabase
+      .from("ng_attendance")
+      .select("*")
+      .eq("child_id", id)
+      .gte("date", `${historyMonth}-01`)
+      .lte("date", `${historyMonth}-31`)
+      .order("date", { ascending: true })
+      .then(({ data }) => {
+        setAttendanceHistory((data as AttendanceRecord[]) ?? []);
+        setHistoryLoading(false);
+      });
+  }, [id, tab, historyMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const child = editChild ?? originalChild;
   const fac = child ? DUMMY_FACILITIES.find((f) => f.id === child.facility_id) : undefined;
@@ -174,6 +197,14 @@ export default function ChildDetailPage() {
         {tab === "support" && (
           <SupportTab child={editChild} isEditing={isEditing}
             onChange={(val) => setEditChild({ ...editChild, support_content: val })}
+          />
+        )}
+        {tab === "history" && (
+          <HistoryTab
+            records={attendanceHistory}
+            loading={historyLoading}
+            month={historyMonth}
+            onMonthChange={setHistoryMonth}
           />
         )}
       </div>
@@ -392,6 +423,123 @@ function EditRow({ label, children }: { label: string; children: React.ReactNode
     <div>
       <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+// 利用履歴タブ
+function HistoryTab({
+  records, loading, month, onMonthChange
+}: {
+  records: AttendanceRecord[];
+  loading: boolean;
+  month: string;
+  onMonthChange: (m: string) => void;
+}) {
+  // 月選択肢（過去12ヶ月）
+  const monthOptions: { value: string; label: string }[] = [];
+  const d = new Date();
+  for (let i = 0; i < 12; i++) {
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    monthOptions.push({ value: `${y}-${String(m).padStart(2, "0")}`, label: `${y}年${m}月` });
+    d.setMonth(d.getMonth() - 1);
+  }
+
+  // 来所日数・欠席日数を集計
+  const arriveCount = records.filter((r) => r.arrive_time).length;
+  const absentCount = records.filter((r) => r.status === "欠席").length;
+
+  return (
+    <div>
+      {/* 月選択 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <select
+          className="form-input"
+          style={{ width: "auto" }}
+          value={month}
+          onChange={(e) => onMonthChange(e.target.value)}
+        >
+          {monthOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <div style={{ display: "flex", gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>
+            来所：{arriveCount}日
+          </span>
+          {absentCount > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
+              欠席：{absentCount}日
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ローディング */}
+      {loading && (
+        <div style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
+          <span className="spinner" />
+        </div>
+      )}
+
+      {/* データなし */}
+      {!loading && records.length === 0 && (
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontSize: 13 }}>
+          この月の記録はありません
+        </div>
+      )}
+
+      {/* 記録テーブル */}
+      {!loading && records.length > 0 && (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th style={{ textAlign: "center" }}>入室</th>
+              <th style={{ textAlign: "center" }}>退出</th>
+              <th style={{ textAlign: "center" }}>体温</th>
+              <th style={{ textAlign: "center" }}>状態</th>
+              <th style={{ textAlign: "center" }}>送迎</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => {
+              const date = new Date(r.date);
+              const dow = ["日","月","火","水","木","金","土"][date.getDay()];
+              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+              return (
+                <tr key={r.id}>
+                  <td style={{ fontSize: 13, fontWeight: 600, color: isWeekend ? "#dc2626" : "#0a2540" }}>
+                    {r.date.slice(5).replace("-", "/")} ({dow})
+                  </td>
+                  <td style={{ textAlign: "center", fontSize: 13, fontWeight: r.arrive_time ? 700 : 400, color: r.arrive_time ? "#059669" : "#94a3b8" }}>
+                    {r.arrive_time ?? "—"}
+                  </td>
+                  <td style={{ textAlign: "center", fontSize: 13, fontWeight: r.depart_time ? 700 : 400, color: r.depart_time ? "#0077b6" : "#94a3b8" }}>
+                    {r.depart_time ?? "—"}
+                  </td>
+                  <td style={{ textAlign: "center", fontSize: 13 }}>
+                    {r.temperature ? `${r.temperature}℃` : "—"}
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <span style={{
+                      fontSize: 11, padding: "2px 10px", borderRadius: 10, fontWeight: 700,
+                      background: r.status === "来所" ? "#dcfce7" : r.status === "欠席" ? "#fee2e2" : "#f1f5f9",
+                      color: r.status === "来所" ? "#166534" : r.status === "欠席" ? "#dc2626" : "#64748b",
+                    }}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: "center", fontSize: 12, color: "#64748b" }}>
+                    {r.transport_to ? "🚌" : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

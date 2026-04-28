@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
-import * as XLSX from "xlsx";
+// xlsxはexceljsに移行
 import { useSession } from "@/hooks/useSession";
 
 function nowHHMM() {
@@ -72,25 +72,87 @@ export default function AttendancePage() {
   );
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
 
-  // Excel出力
-  const exportExcel = () => {
-    const data = todayChildren.map((child) => {
-      const rec = records[child.id];
-      return {
-        "氏名": child.name,
-        "学年": child.grade ?? "",
-        "来所時間": rec?.arrive ?? "",
-        "退所時間": rec?.depart ?? "",
-        "体温（℃）": rec?.temp ?? "",
-        "状態": rec?.arrive ? "来所" : "未記録",
-        "送迎": child.has_transport ? "あり" : "なし",
-      };
+  // Excel出力（exceljs：枠線・色付き）
+  const exportExcel = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("入退室記録", {
+      pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, paperSize: 9 },
     });
-    const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [14, 8, 10, 10, 10, 8, 8].map((w) => ({ wch: w }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "入退室記録");
-    XLSX.writeFile(wb, `入退室記録_${fac?.name}_${todayISO()}.xlsx`);
+
+    const thin = { style: "thin" as const, color: { argb: "FFCCCCCC" } };
+    const bd = { top: thin, left: thin, bottom: thin, right: thin };
+
+    // タイトル行
+    ws.mergeCells(1, 1, 1, 7);
+    const title = ws.getCell(1, 1);
+    title.value = `${fac?.name}　入退室記録　${todayISO()}`;
+    title.font = { bold: true, size: 13, color: { argb: "FF0A2540" } };
+    title.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 26;
+
+    // ヘッダー行
+    const headers = ["氏名", "学年", "入室時刻", "退出時刻", "体温（℃）", "状態", "送迎"];
+    const colWidths = [16, 8, 10, 10, 10, 8, 8];
+    ws.getRow(2).height = 24;
+    headers.forEach((h, i) => {
+      const cell = ws.getCell(2, i + 1);
+      cell.value = h;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = bd;
+      ws.getColumn(i + 1).width = colWidths[i];
+    });
+
+    // データ行
+    todayChildren.forEach((child, rowIdx) => {
+      const rec = records[child.id];
+      const row = ws.getRow(rowIdx + 3);
+      row.height = 20;
+      const bg = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: rowIdx % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" } };
+
+      const status = rec?.depart ? "退所済" : rec?.arrive ? "来所中" : "未来所";
+      const statusColor = rec?.depart ? "FF94A3B8" : rec?.arrive ? "FF059669" : "FFF59E0B";
+
+      const values = [
+        child.name,
+        child.grade ?? "",
+        rec?.arrive ?? "",
+        rec?.depart ?? "",
+        rec?.temp ?? "",
+        status,
+        child.has_transport ? "あり" : "—",
+      ];
+
+      values.forEach((v, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = v;
+        cell.border = bd;
+        cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle", indent: i === 0 ? 1 : 0 };
+        cell.fill = bg;
+        // 入室・退出時刻は色付き
+        if (i === 2 && rec?.arrive) {
+          cell.font = { bold: true, color: { argb: "FF059669" }, size: 10 };
+        } else if (i === 3 && rec?.depart) {
+          cell.font = { bold: true, color: { argb: "FF0077B6" }, size: 10 };
+        } else if (i === 5) {
+          cell.font = { bold: true, color: { argb: statusColor }, size: 10 };
+        } else {
+          cell.font = { size: 10 };
+        }
+      });
+    });
+
+    // ダウンロード
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `入退室記録_${fac?.name}_${todayISO()}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleArrive = async (childId: string) => {

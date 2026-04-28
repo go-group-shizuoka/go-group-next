@@ -4,8 +4,8 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES, DUMMY_STAFF } from "@/lib/dummy-data";
-import { saveRecord, fetchByFacility } from "@/lib/supabase";
-import type { UserSession, DailyReport } from "@/types";
+import { saveRecord, fetchByFacility, supabase } from "@/lib/supabase";
+import type { DailyReport, AttendanceRecord, WorkLog } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -68,6 +68,10 @@ export default function DailyReportPage() {
   const [loadingDB, setLoadingDB] = useState(false);
   const [reports, setReports] = useState<DailyReportData[]>([]);
   const [view, setView] = useState<"list" | "edit" | "view">("list");
+  // 自動反映用：実際の入退室・勤怠データ
+  const [autoAttendance, setAutoAttendance] = useState<AttendanceRecord[]>([]);
+  const [autoWorkLogs, setAutoWorkLogs] = useState<WorkLog[]>([]);
+  const [autoLoaded, setAutoLoaded] = useState(false);
 
   // Supabaseから日報一覧を読み込む
   useEffect(() => {
@@ -99,22 +103,51 @@ export default function DailyReportPage() {
   );
   const facilityStaff = DUMMY_STAFF.filter((s) => s.facility_id === session.selected_facility_id);
 
-  // 新規日報作成
-  const createReport = () => {
+  // 新規日報作成（入退室・勤怠データを自動反映）
+  const createReport = async () => {
     const existing = reports.find((r) => r.date === selDate && r.facility_id === session.selected_facility_id);
     if (existing) { setReport(existing); setView("edit"); return; }
+
+    setLoadingDB(true);
+    setAutoLoaded(false);
+
+    // ① 入退室記録を取得
+    const { data: attendance } = await supabase
+      .from("ng_attendance")
+      .select("*")
+      .eq("facility_id", session.selected_facility_id)
+      .eq("date", selDate);
+
+    // ② 勤怠記録を取得
+    const { data: workLogs } = await supabase
+      .from("ng_work_log")
+      .select("*")
+      .eq("facility_id", session.selected_facility_id)
+      .eq("date", selDate);
+
+    const arrived = (attendance as AttendanceRecord[] ?? []).filter((a) => a.arrive_time);
+    const worked = (workLogs as WorkLog[] ?? []).filter((w) => w.clock_in);
+
+    setAutoAttendance(arrived);
+    setAutoWorkLogs(worked);
+    if (arrived.length > 0 || worked.length > 0) setAutoLoaded(true);
+
+    // 来所時間が一番早い記録から活動の開始時間を決める
+    const firstArrive = arrived.sort((a, b) => (a.arrive_time ?? "") > (b.arrive_time ?? "") ? 1 : -1)[0]?.arrive_time ?? "14:00";
+
     const newReport: DailyReportData = {
       id: genId(),
       date: selDate,
       facility_id: session.selected_facility_id,
       weather: "晴れ",
       author: session.name,
-      child_count: todayChildren.length,
-      staff_count: facilityStaff.length,
+      // 実データがあればそちらを優先、なければダミーデータ
+      child_count: arrived.length > 0 ? arrived.length : todayChildren.length,
+      staff_count: worked.length > 0 ? worked.length : facilityStaff.length,
       activities: [
-        { time: "14:00", title: "来所・健康チェック", detail: "体温測定・健康観察を実施", staff: session.name },
-        { time: "14:30", title: "", detail: "", staff: "" },
-        { time: "15:30", title: "", detail: "", staff: "" },
+        { time: firstArrive, title: "来所・健康チェック", detail: `体温測定・健康観察を実施 / 来所${arrived.length > 0 ? arrived.length : todayChildren.length}名`, staff: session.name },
+        { time: "15:00", title: "", detail: "", staff: "" },
+        { time: "16:00", title: "", detail: "", staff: "" },
         { time: "17:00", title: "退所準備・送迎", detail: "", staff: "" },
       ],
       incident: "",
@@ -123,6 +156,7 @@ export default function DailyReportPage() {
       manager_note: "",
       status: "下書き",
     };
+    setLoadingDB(false);
     setReport(newReport);
     setView("edit");
   };
@@ -251,13 +285,58 @@ export default function DailyReportPage() {
           </Section>
 
           {/* 来所児童一覧 */}
-          <Section title="来所児童一覧（自動集計）">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {todayChildren.map((c) => (
-                <span key={c.id} className="badge badge-blue" style={{ fontSize: 12 }}>{c.name} ({c.grade})</span>
-              ))}
-              {todayChildren.length === 0 && <span style={{ color: "#94a3b8", fontSize: 13 }}>来所予定なし</span>}
-            </div>
+          <Section title={autoLoaded ? "来所児童一覧 ✅ 入退室記録から自動集計" : "来所児童一覧（予定）"}>
+            {autoLoaded && autoAttendance.length > 0 ? (
+              <div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 8 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc" }}>
+                      <th style={thStyle}>氏名</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>入室</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>退出</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>体温</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>送迎</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {autoAttendance.map((a) => (
+                      <tr key={a.id}>
+                        <td style={tdStyle}>{a.child_name}</td>
+                        <td style={{ ...tdStyle, textAlign: "center", color: "#059669", fontWeight: 700 }}>{a.arrive_time ?? "—"}</td>
+                        <td style={{ ...tdStyle, textAlign: "center", color: "#0077b6", fontWeight: 700 }}>{a.depart_time ?? "—"}</td>
+                        <td style={{ ...tdStyle, textAlign: "center" }}>{a.temperature ? `${a.temperature}℃` : "—"}</td>
+                        <td style={{ ...tdStyle, textAlign: "center" }}>{a.transport_to ? "🚌" : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* 出勤スタッフ */}
+                {autoWorkLogs.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>出勤スタッフ（勤怠記録より）</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {autoWorkLogs.map((w) => (
+                        <span key={w.id} className="badge badge-green" style={{ fontSize: 12 }}>
+                          {w.staff_name} {w.clock_in}〜{w.clock_out ?? "勤務中"}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {todayChildren.map((c) => (
+                    <span key={c.id} className="badge badge-blue" style={{ fontSize: 12 }}>{c.name} ({c.grade})</span>
+                  ))}
+                  {todayChildren.length === 0 && <span style={{ color: "#94a3b8", fontSize: 13 }}>来所予定なし</span>}
+                </div>
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+                  ※ 入退室記録が登録されると実データで自動更新されます
+                </div>
+              </div>
+            )}
           </Section>
 
           {/* 活動プログラム */}
