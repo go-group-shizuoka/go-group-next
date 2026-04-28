@@ -269,8 +269,8 @@ export default function AttendancePage() {
             <tr>
               <th>児童名</th>
               <th>体温</th>
-              <th>来所時刻</th>
               <th>退所時刻</th>
+              <th>来所時刻</th>
               <th>送迎</th>
               <th>操作</th>
             </tr>
@@ -315,11 +315,11 @@ export default function AttendancePage() {
                     </div>
                   </td>
                   <td style={{ fontSize: 13 }}>{rec.temp ?? "—"}</td>
-                  <td style={{ fontSize: 13, fontWeight: rec.arrive ? 700 : 400, color: rec.arrive ? "#059669" : "#94a3b8" }}>
-                    {rec.arrive ?? "—"}
-                  </td>
                   <td style={{ fontSize: 13, fontWeight: rec.depart ? 700 : 400, color: rec.depart ? "#0077b6" : "#94a3b8" }}>
                     {rec.depart ?? "—"}
+                  </td>
+                  <td style={{ fontSize: 13, fontWeight: rec.arrive ? 700 : 400, color: rec.arrive ? "#059669" : "#94a3b8" }}>
+                    {rec.arrive ?? "—"}
                   </td>
                   <td>
                     {child.has_transport ? (
