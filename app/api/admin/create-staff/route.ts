@@ -13,7 +13,8 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { login_id, password, name, role, facility_id, org_id } = await req.json();
+    const { login_id, password, name, role, facility_id, org_id,
+            phone, employment_type, qualifications, hire_date, emergency_contact } = await req.json();
 
     if (!login_id || !password || !name || !role || !facility_id) {
       return NextResponse.json({ error: "必須項目が不足しています" }, { status: 400 });
@@ -55,6 +56,11 @@ export async function POST(req: NextRequest) {
         role,
         login_id,
         auth_user_id: authUserId,
+        phone: phone ?? null,
+        employment_type: employment_type ?? null,
+        qualifications: qualifications ?? null,
+        hire_date: hire_date ?? null,
+        emergency_contact: emergency_contact ?? null,
         created_at: new Date().toISOString(),
       }, { onConflict: "login_id" });
 

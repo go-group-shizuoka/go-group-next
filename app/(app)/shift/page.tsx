@@ -1,312 +1,537 @@
 "use client";
-// ==================== シフト管理 ====================
-// 月間シフト表の表示・入力。Supabase保存・読み込み対応。
+// ==================== シフト・出勤管理 ====================
+// シフト表の作成・編集（月次カレンダー）と出勤打刻機能
 
-import { useState, useEffect, useCallback } from "react";
-import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByFacility, fetchByFacilityWhere } from "@/lib/supabase";
-import type { ShiftRecord, Staff } from "@/types";
-import * as XLSX from "xlsx";
+import { useState, useEffect } from "react";
 import { useSession } from "@/hooks/useSession";
+import { fetchByFacility, saveRecord } from "@/lib/supabase";
+import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
+import type { ShiftRecord, WorkLog } from "@/types";
+import * as XLSX from "xlsx";
 
-const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
+type TabKey = "shift" | "worklog";
 
-const SHIFT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  "A":  { label: "早番", color: "#0077b6", bg: "#e0f2fe" },
-  "B":  { label: "遅番", color: "#059669", bg: "#dcfce7" },
-  "C":  { label: "通常", color: "#6366f1", bg: "#ede9fe" },
-  "休": { label: "休み", color: "#94a3b8", bg: "#f1f5f9" },
-  "有": { label: "有休", color: "#f59e0b", bg: "#fef9c3" },
-  "":   { label: "未設定", color: "#cbd5e1", bg: "white" },
+// シフト種別（クリックで循環）
+const SHIFT_TYPES = ["", "日勤", "早番", "遅番", "休", "有", "欠"];
+
+// シフト種別ごとの色定義
+const SHIFT_STYLE: Record<string, { bg: string; color: string }> = {
+  "":     { bg: "#f8fafc", color: "#94a3b8" },
+  "日勤": { bg: "#dbeafe", color: "#1d4ed8" },
+  "早番": { bg: "#dcfce7", color: "#15803d" },
+  "遅番": { bg: "#fef9c3", color: "#b45309" },
+  "休":   { bg: "#f1f5f9", color: "#64748b" },
+  "有":   { bg: "#f3e8ff", color: "#7c3aed" },
+  "欠":   { bg: "#fee2e2", color: "#dc2626" },
 };
 
-type ShiftMap = Record<string, Record<number, string>>;
+const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+
+// 月の日数を取得
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+// 過去12ヶ月の選択肢を生成
+function genMonths(count = 12) {
+  const months = [];
+  const d = new Date();
+  for (let i = 0; i < count; i++) {
+    months.push({
+      year: d.getFullYear(), month: d.getMonth() + 1,
+      label: `${d.getFullYear()}年${d.getMonth() + 1}月`,
+    });
+    d.setMonth(d.getMonth() - 1);
+  }
+  return months;
+}
+
+// 現在時刻を HH:MM 形式で取得
+function nowTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// 今日の日付を YYYY-MM-DD 形式で取得
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function ShiftPage() {
   const session = useSession();
+  const [tab, setTab] = useState<TabKey>("shift");
+
+  // 月選択（シフト・ログ共通）
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1);
-  const [shifts, setShifts] = useState<ShiftMap>({});
-  const [editCell, setEditCell] = useState<{ staffId: string; day: number } | null>(null);
-  const [loadingDB, setLoadingDB] = useState(false);
-  const [savingCell, setSavingCell] = useState<string | null>(null);
-  // DBから取得したスタッフデータ
-  const [dbStaff, setDbStaff] = useState<Staff[]>([]);
+  const [selYear, setSelYear] = useState(today.getFullYear());
+  const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
+  const months = genMonths(12);
 
-  // Supabaseから当月のシフト＋スタッフを読み込む
-  const loadShifts = useCallback(async () => {
-    if (!session) return;
-    setLoadingDB(true);
+  // === シフト管理 ===
+  const [shifts, setShifts] = useState<ShiftRecord[]>([]);
+  // key: "staffId_year_month_day" → シフト種別
+  const [editShifts, setEditShifts] = useState<Record<string, string>>({});
+  const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftMsg, setShiftMsg] = useState("");
 
-    const [rows, staffRows] = await Promise.all([
-      // シフトデータ取得
-      fetchByFacilityWhere<ShiftRecord>(
-        "ng_shifts",
-        session.org_id,
-        session.selected_facility_id,
-        { year, month }
-      ),
-      // スタッフデータ取得（ng_staffテーブル）
-      fetchByFacility<Staff>(
-        "ng_staff",
-        session.org_id,
-        session.selected_facility_id
-      ),
-    ]);
+  // === 出勤打刻 ===
+  const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
+  const [clockMsg, setClockMsg] = useState("");
 
-    // スタッフデータ反映（DBにあればDB優先）
-    if (staffRows.length > 0) {
-      setDbStaff(staffRows);
-    }
-
-    // ShiftMapに変換
-    const map: ShiftMap = {};
-    for (const r of rows) {
-      if (!map[r.staff_id]) map[r.staff_id] = {};
-      map[r.staff_id][r.day] = r.shift_type;
-    }
-    setShifts(map);
-    setLoadingDB(false);
-  }, [session, year, month]);
-
+  // データ読み込み
   useEffect(() => {
-    loadShifts();
-  }, [loadShifts]);
+    if (!session) return;
+    Promise.all([
+      fetchByFacility<ShiftRecord>("ng_shift", session.org_id, session.selected_facility_id),
+      fetchByFacility<WorkLog>("ng_work_log", session.org_id, session.selected_facility_id),
+    ]).then(([s, w]) => {
+      setShifts(s);
+      setWorkLogs(w);
+      // 編集マップを初期化
+      const map: Record<string, string> = {};
+      s.forEach((r) => { map[`${r.staff_id}_${r.year}_${r.month}_${r.day}`] = r.shift_type; });
+      setEditShifts(map);
+    });
+  }, [session]);
 
   if (!session) return null;
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
-
-  // DBにスタッフがあればDB優先、なければDUMMY_STAFFにフォールバック
-  const staff = dbStaff.length > 0
-    ? dbStaff
-    : DUMMY_STAFF.filter((s) => s.facility_id === session.selected_facility_id);
-
-  const daysInMonth = new Date(year, month, 0).getDate();
+  // この施設の職員一覧（ダミーから取得）
+  const staffList = DUMMY_STAFF.filter((s) => s.facility_id === session.selected_facility_id);
+  const daysInMonth = getDaysInMonth(selYear, selMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const getShift = (staffId: string, day: number) => shifts[staffId]?.[day] ?? "";
+  // シフトをクリックで次の種別に循環
+  const cycleShift = (staffId: string, day: number) => {
+    const key = `${staffId}_${selYear}_${selMonth}_${day}`;
+    const current = editShifts[key] ?? "";
+    const idx = SHIFT_TYPES.indexOf(current);
+    const next = SHIFT_TYPES[(idx + 1) % SHIFT_TYPES.length];
+    setEditShifts((p) => ({ ...p, [key]: next }));
+  };
 
-  // シフトを変更してSupabaseに保存
-  const setShift = async (staffId: string, day: number, val: string) => {
-    const cellKey = `${staffId}_${day}`;
-    setSavingCell(cellKey);
-    setShifts((prev) => ({ ...prev, [staffId]: { ...(prev[staffId] ?? {}), [day]: val } }));
-    setEditCell(null);
+  // シフトを保存（ng_shiftテーブルへupsert）
+  const handleSaveShift = async () => {
+    setShiftSaving(true);
+    try {
+      const targets = Object.entries(editShifts).filter(([key]) =>
+        key.includes(`_${selYear}_${selMonth}_`)
+      );
+      await Promise.all(
+        targets.map(([key, shift_type]) => {
+          const parts = key.split("_");
+          const staff_id = parts[0];
+          const day = Number(parts[3]);
+          const staff = staffList.find((s) => s.id === staff_id);
+          return saveRecord("ng_shift", {
+            id: `${session.selected_facility_id}_${selYear}_${selMonth}_${staff_id}_${day}`,
+            org_id: session.org_id,
+            facility_id: session.selected_facility_id,
+            staff_id,
+            staff_name: staff?.name ?? "",
+            year: selYear,
+            month: selMonth,
+            day,
+            shift_type,
+            created_by: session.name,
+            created_at: new Date().toISOString(),
+          } as Record<string, unknown>);
+        })
+      );
+      setShiftMsg("✓ シフトを保存しました");
+    } catch {
+      setShiftMsg("⚠️ 保存に失敗しました");
+    }
+    setShiftSaving(false);
+    setTimeout(() => setShiftMsg(""), 3000);
+  };
 
-    // staff配列からスタッフ名を取得
-    const s = staff.find((x) => x.id === staffId);
-    await saveRecord("ng_shifts", {
-      id: `${staffId}_${year}_${String(month).padStart(2, "0")}_${String(day).padStart(2, "0")}`,
+  // シフト表をExcel出力
+  const exportShiftExcel = () => {
+    const data = staffList.map((staff) => {
+      const row: Record<string, string | number> = { "氏名": staff.name };
+      let workDays = 0;
+      days.forEach((day) => {
+        const key = `${staff.id}_${selYear}_${selMonth}_${day}`;
+        const s = editShifts[key] ?? "";
+        const dow = DOW[new Date(selYear, selMonth - 1, day).getDay()];
+        row[`${day}(${dow})`] = s || "—";
+        if (s && s !== "休" && s !== "有" && s !== "欠" && s !== "") workDays++;
+      });
+      row["出勤日数"] = workDays;
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 12 }, ...days.map(() => ({ wch: 5 })), { wch: 8 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "シフト表");
+    XLSX.writeFile(wb, `シフト表_${fac?.name}_${selYear}年${selMonth}月.xlsx`);
+  };
+
+  // === 出勤打刻 ===
+  const today_str = todayStr();
+  const todayLogs = workLogs.filter((w) => w.date === today_str);
+
+  // 出勤打刻
+  const handleClockIn = async (staffId: string, staffName: string) => {
+    const existing = todayLogs.find((w) => w.staff_id === staffId);
+    if (existing?.clock_in) return;
+    const log: WorkLog = {
+      id: `${session.selected_facility_id}_${today_str}_${staffId}`,
       org_id: session.org_id,
       facility_id: session.selected_facility_id,
       staff_id: staffId,
-      staff_name: s?.name ?? "",
-      year,
-      month,
-      day,
-      shift_type: val,
-      created_by: session.name,
+      staff_name: staffName,
+      date: today_str,
+      clock_in: nowTime(),
+      break_minutes: 60,
       created_at: new Date().toISOString(),
-    } as unknown as Record<string, unknown>);
-    setSavingCell(null);
-  };
-
-  const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
-
-  // 月間出勤日数（A/B/Cシフト）を集計
-  const countWork = (staffId: string) =>
-    days.filter((d) => { const s = getShift(staffId, d); return s === "A" || s === "B" || s === "C"; }).length;
-
-  // 月間休日数（休）を集計
-  const countOff = (staffId: string) =>
-    days.filter((d) => getShift(staffId, d) === "休").length;
-
-  // 月間有休日数を集計
-  const countPaid = (staffId: string) =>
-    days.filter((d) => getShift(staffId, d) === "有").length;
-
-  // 日別出勤人数
-  const countByDay = (day: number) =>
-    staff.filter((s) => { const v = getShift(s.id, day); return v === "A" || v === "B" || v === "C"; }).length;
-
-  // Excel出力：行=職員名 | 1日～月末日 | 出勤日数合計
-  const exportShiftExcel = () => {
-    const header = ["職員名", "役職", ...days.map((d) => `${d}日`), "出勤日数", "休日数", "有休日数"];
-    const data = staff.map((s) => {
-      const row: Record<string, string | number> = {
-        "職員名": s.name,
-        "役職": s.role === "manager" ? "管理者" : "職員",
-      };
-      days.forEach((d) => {
-        row[`${d}日`] = getShift(s.id, d) || "－";
-      });
-      row["出勤日数"] = countWork(s.id);
-      row["休日数"] = countOff(s.id);
-      row["有休日数"] = countPaid(s.id);
-      return row;
+    };
+    await saveRecord("ng_work_log", log as unknown as Record<string, unknown>);
+    setWorkLogs((p) => {
+      const exists = p.find((w) => w.id === log.id);
+      return exists ? p.map((w) => w.id === log.id ? log : w) : [...p, log];
     });
-
-    const ws = XLSX.utils.json_to_sheet(data, { header });
-    // 列幅調整（職員名列を広く、日付列は狭く）
-    ws["!cols"] = [
-      { wch: 14 }, { wch: 8 },
-      ...days.map(() => ({ wch: 5 })),
-      { wch: 8 }, { wch: 8 }, { wch: 8 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `シフト表_${month}月`);
-    XLSX.writeFile(wb, `シフト表_${fac?.name}_${year}年${month}月.xlsx`);
+    setClockMsg(`✓ ${staffName} の出勤を記録しました（${log.clock_in}）`);
+    setTimeout(() => setClockMsg(""), 4000);
   };
 
-  if (loadingDB) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
-      <span className="spinner" />
-    </div>
-  );
+  // 退勤打刻
+  const handleClockOut = async (staffId: string) => {
+    const existing = todayLogs.find((w) => w.staff_id === staffId);
+    if (!existing || existing.clock_out) return;
+    const clockOut = nowTime();
+    const [inH, inM] = (existing.clock_in ?? "09:00").split(":").map(Number);
+    const [outH, outM] = clockOut.split(":").map(Number);
+    const totalMins = (outH * 60 + outM) - (inH * 60 + inM);
+    const workMinutes = Math.max(0, totalMins - (existing.break_minutes ?? 60));
+    const updated = { ...existing, clock_out: clockOut, work_minutes: workMinutes };
+    await saveRecord("ng_work_log", updated as unknown as Record<string, unknown>);
+    setWorkLogs((p) => p.map((w) => w.id === existing.id ? updated : w));
+    setClockMsg(`✓ ${existing.staff_name} の退勤を記録しました（${clockOut}）`);
+    setTimeout(() => setClockMsg(""), 4000);
+  };
+
+  // 月次ログ
+  const monthStr = `${selYear}-${String(selMonth).padStart(2, "0")}`;
+  const monthLogs = workLogs
+    .filter((w) => w.date?.startsWith(monthStr))
+    .sort((a, b) => a.date > b.date ? 1 : -1);
+
+  // 月次勤務時間集計
+  const monthTotals = staffList.map((staff) => {
+    const logs = monthLogs.filter((w) => w.staff_id === staff.id);
+    const totalMins = logs.reduce((s, w) => s + (w.work_minutes ?? 0), 0);
+    const workDays = logs.filter((w) => w.clock_in).length;
+    return { staff, totalMins, workDays };
+  });
 
   return (
     <div>
-      {/* 印刷時にボタン類を非表示・テーブルをA4横向きに */}
-      <style>{`
-        @media print {
-          .shift-no-print { display: none !important; }
-          .shift-table-wrap { overflow: visible !important; }
-          @page { size: A4 landscape; margin: 10mm; }
-          body { font-size: 10px; }
-        }
-      `}</style>
-
       {/* ヘッダー */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0a2540", margin: 0 }}>🗓️ シフト管理</h1>
-          <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{fac?.name} ／ {year}年{month}月</p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} className="shift-no-print">
-          {/* 月切替 */}
-          <button className="btn-secondary" onClick={prevMonth} style={{ padding: "6px 14px" }}>‹ 前月</button>
-          <button className="btn-secondary" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth() + 1); }} style={{ padding: "6px 14px" }}>今月</button>
-          <button className="btn-secondary" onClick={nextMonth} style={{ padding: "6px 14px" }}>翌月 ›</button>
-          {/* 印刷・Excel出力ボタン */}
-          <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 12 }}>
-            🖨️ 印刷
-          </button>
-          <button className="btn-secondary" onClick={exportShiftExcel} style={{ fontSize: 12 }}>
-            📊 Excel出力
-          </button>
-        </div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0a2540", margin: 0 }}>📆 シフト・出勤管理</h1>
+        <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{fac?.name} ／ 職員シフト・勤怠管理</p>
       </div>
 
-      {/* 凡例 */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }} className="shift-no-print">
-        {Object.entries(SHIFT_TYPES).filter(([k]) => k !== "").map(([key, val]) => (
-          <span key={key} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: val.bg, color: val.color, fontWeight: 700, border: "1px solid " + val.color + "33" }}>
-            {key}：{val.label}
-          </span>
+      {/* タブ */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "2px solid #e2e8f0" }}>
+        {([
+          { key: "shift" as TabKey, label: "📅 シフト管理" },
+          { key: "worklog" as TabKey, label: "⏰ 出勤打刻" },
+        ]).map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{
+              padding: "10px 20px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
+              fontFamily: "inherit", background: "transparent",
+              borderBottom: tab === t.key ? "3px solid #0077b6" : "3px solid transparent",
+              color: tab === t.key ? "#0077b6" : "#64748b", marginBottom: -2, transition: "all 0.15s",
+            }}>
+            {t.label}
+          </button>
         ))}
-        {savingCell && (
-          <span style={{ fontSize: 11, color: "#0077b6", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-            <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-            保存中...
-          </span>
-        )}
       </div>
 
-      <div className="card shift-table-wrap" style={{ overflowX: "auto", padding: 0 }}>
-        {staff.length === 0 ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>この施設の職員が登録されていません</div>
-        ) : (
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 600, fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e2e8f0", fontWeight: 700, color: "#64748b", width: 100, position: "sticky", left: 0, background: "#f8fafc", zIndex: 1 }}>
-                  職員名
-                </th>
-                {days.map((d) => {
-                  const dow = new Date(year, month - 1, d).getDay();
-                  const isT = year === today.getFullYear() && month === today.getMonth() + 1 && d === today.getDate();
-                  return (
-                    <th key={d} style={{ padding: "6px 2px", textAlign: "center", borderBottom: "2px solid #e2e8f0", color: dow === 0 ? "#ef4444" : dow === 6 ? "#3b82f6" : "#64748b", minWidth: 34, fontWeight: isT ? 800 : 600, background: isT ? "#e0f2fe" : "#f8fafc" }}>
-                      <div>{d}</div>
-                      <div style={{ fontSize: 9 }}>{DOW_JP[dow]}</div>
-                    </th>
-                  );
-                })}
-                {/* 月間集計列ヘッダー */}
-                <th style={{ padding: "6px 6px", textAlign: "center", borderBottom: "2px solid #e2e8f0", fontWeight: 700, color: "#0077b6", width: 52, position: "sticky", right: 0, background: "#f8fafc", zIndex: 1, fontSize: 11, borderLeft: "1px solid #e2e8f0" }}>
-                  出勤<br />/休
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {staff.map((s) => (
-                <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={{ padding: "8px 12px", fontWeight: 600, color: "#1e293b", position: "sticky", left: 0, background: "white", zIndex: 1, borderRight: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 13 }}>{s.name}</div>
-                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{s.role === "manager" ? "管理者" : "職員"}</div>
-                  </td>
-                  {days.map((d) => {
-                    const val = getShift(s.id, d);
-                    const info = SHIFT_TYPES[val] ?? SHIFT_TYPES[""];
-                    const dow = new Date(year, month - 1, d).getDay();
-                    const isEditing = editCell?.staffId === s.id && editCell?.day === d;
-                    const cellKey = `${s.id}_${d}`;
-                    const isSaving = savingCell === cellKey;
+      {/* ===== シフト管理タブ ===== */}
+      {tab === "shift" && (
+        <div>
+          {/* コントロールバー */}
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "space-between" }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>対象月</label>
+                <select className="form-input" style={{ width: "auto" }}
+                  value={`${selYear}-${selMonth}`}
+                  onChange={(e) => { const [y, m] = e.target.value.split("-"); setSelYear(+y); setSelMonth(+m); }}>
+                  {months.map((m) => (
+                    <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {shiftMsg && (
+                  <span style={{ fontSize: 12, color: shiftMsg.includes("✓") ? "#059669" : "#dc2626", fontWeight: 600 }}>
+                    {shiftMsg}
+                  </span>
+                )}
+                <button className="btn-secondary" onClick={exportShiftExcel} style={{ fontSize: 12 }}>
+                  📊 Excel出力
+                </button>
+                <button className="btn-primary" onClick={handleSaveShift} disabled={shiftSaving} style={{ fontSize: 12 }}>
+                  {shiftSaving ? "保存中..." : "💾 シフト保存"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 凡例 */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+            {SHIFT_TYPES.filter((s) => s !== "").map((s) => (
+              <span key={s} style={{
+                fontSize: 11, padding: "3px 10px", borderRadius: 10,
+                background: SHIFT_STYLE[s].bg, color: SHIFT_STYLE[s].color, fontWeight: 700,
+              }}>
+                {s}
+              </span>
+            ))}
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>※ セルをクリックで変更</span>
+          </div>
+
+          {/* シフト表カレンダー */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{
+                    position: "sticky", left: 0, background: "#f8fafc", zIndex: 2,
+                    padding: "8px 14px", textAlign: "left", borderBottom: "2px solid #e2e8f0",
+                    minWidth: 100, fontWeight: 700, color: "#374151",
+                  }}>
+                    職員名
+                  </th>
+                  {days.map((day) => {
+                    const dow = new Date(selYear, selMonth - 1, day).getDay();
+                    const isSun = dow === 0;
+                    const isSat = dow === 6;
                     return (
-                      <td key={d} style={{ textAlign: "center", padding: "3px 2px", background: dow === 0 || dow === 6 ? "#fafafa" : "white" }}>
-                        {isEditing ? (
-                          <select autoFocus defaultValue={val}
-                            onChange={(e) => setShift(s.id, d, e.target.value)}
-                            onBlur={() => setEditCell(null)}
-                            style={{ width: 38, fontSize: 11, border: "1px solid #0077b6", borderRadius: 4 }}>
-                            {Object.keys(SHIFT_TYPES).map((k) => (
-                              <option key={k} value={k}>{k === "" ? "－" : k}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div onClick={() => setEditCell({ staffId: s.id, day: d })}
-                            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, cursor: "pointer", background: isSaving ? "#e0f2fe" : info.bg, color: isSaving ? "#0077b6" : info.color, fontWeight: 700, fontSize: 12, border: val ? "none" : "1px dashed #e2e8f0", opacity: isSaving ? 0.6 : 1 }}>
-                            {isSaving ? "…" : (val || "")}
-                          </div>
-                        )}
-                      </td>
+                      <th key={day} style={{
+                        padding: "4px 2px", textAlign: "center", borderBottom: "2px solid #e2e8f0",
+                        minWidth: 34, color: isSun ? "#dc2626" : isSat ? "#2563eb" : "#374151", fontWeight: 700,
+                      }}>
+                        <div style={{ fontSize: 11 }}>{day}</div>
+                        <div style={{ fontSize: 9, fontWeight: 400 }}>{DOW[dow]}</div>
+                      </th>
                     );
                   })}
-                  {/* 月間出勤日数・休日数・有休日数の集計 */}
-                  <td style={{ textAlign: "center", position: "sticky", right: 0, background: "white", borderLeft: "1px solid #e2e8f0", padding: "4px 6px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#0077b6" }}>{countWork(s.id)}日</div>
-                    <div style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.3 }}>
-                      {countOff(s.id) > 0 && <span>休{countOff(s.id)} </span>}
-                      {countPaid(s.id) > 0 && <span style={{ color: "#f59e0b" }}>有{countPaid(s.id)}</span>}
-                    </div>
-                  </td>
+                  <th style={{
+                    padding: "8px 8px", textAlign: "center", borderBottom: "2px solid #e2e8f0",
+                    minWidth: 60, fontWeight: 700, color: "#374151",
+                  }}>
+                    出勤日数
+                  </th>
                 </tr>
-              ))}
-
-              {/* 日別出勤数の合計行 */}
-              <tr style={{ background: "#f8fafc", borderTop: "2px solid #e2e8f0" }}>
-                <td style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#64748b", position: "sticky", left: 0, background: "#f8fafc", zIndex: 1 }}>出勤数</td>
-                {days.map((d) => {
-                  const cnt = countByDay(d);
-                  const dow = new Date(year, month - 1, d).getDay();
-                  return (
-                    <td key={d} style={{ textAlign: "center", padding: "4px 2px", background: dow === 0 || dow === 6 ? "#fafafa" : "#f8fafc" }}>
-                      {cnt > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: cnt >= 2 ? "#059669" : "#f59e0b" }}>{cnt}</span>
-                      )}
+              </thead>
+              <tbody>
+                {staffList.length === 0 ? (
+                  <tr>
+                    <td colSpan={daysInMonth + 2} style={{ textAlign: "center", color: "#94a3b8", padding: 32 }}>
+                      この施設の職員が登録されていません
                     </td>
+                  </tr>
+                ) : staffList.map((staff) => {
+                  let workDays = 0;
+                  return (
+                    <tr key={staff.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{
+                        position: "sticky", left: 0, background: "white", zIndex: 1,
+                        padding: "6px 14px", fontWeight: 600, whiteSpace: "nowrap",
+                        borderRight: "1px solid #f1f5f9",
+                      }}>
+                        {staff.name}
+                      </td>
+                      {days.map((day) => {
+                        const key = `${staff.id}_${selYear}_${selMonth}_${day}`;
+                        const s = editShifts[key] ?? "";
+                        const style = SHIFT_STYLE[s] ?? SHIFT_STYLE[""];
+                        if (s && s !== "休" && s !== "有" && s !== "欠") workDays++;
+                        return (
+                          <td key={day}
+                            onClick={() => cycleShift(staff.id, day)}
+                            style={{ padding: "3px 2px", textAlign: "center", cursor: "pointer" }}>
+                            <div style={{
+                              background: style.bg, color: style.color, fontWeight: 700,
+                              fontSize: 11, borderRadius: 4, padding: "3px 1px", minWidth: 28,
+                            }}>
+                              {s || "—"}
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: "#0077b6" }}>
+                        {workDays}日
+                      </td>
+                    </tr>
                   );
                 })}
-                <td style={{ position: "sticky", right: 0, background: "#f8fafc", borderLeft: "1px solid #e2e8f0" }} />
-              </tr>
-            </tbody>
-          </table>
-        )}
-      </div>
-      <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>※ セルをクリックしてシフト種別を設定。変更は自動保存されます。</p>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 出勤打刻タブ ===== */}
+      {tab === "worklog" && (
+        <div>
+          {/* 本日の打刻 */}
+          <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#0a2540", marginBottom: 16 }}>
+              ⏰ 本日の出勤状況
+              <span style={{ fontSize: 12, color: "#64748b", fontWeight: 400, marginLeft: 8 }}>
+                {today_str.replace(/-/g, "/")}
+              </span>
+            </div>
+            {clockMsg && (
+              <div style={{
+                background: clockMsg.includes("✓") ? "#dcfce7" : "#fef2f2",
+                color: clockMsg.includes("✓") ? "#166534" : "#dc2626",
+                borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, fontWeight: 600,
+              }}>
+                {clockMsg}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {staffList.length === 0 && (
+                <div style={{ color: "#94a3b8", textAlign: "center", padding: 24 }}>
+                  職員が登録されていません
+                </div>
+              )}
+              {staffList.map((staff) => {
+                const log = todayLogs.find((w) => w.staff_id === staff.id);
+                return (
+                  <div key={staff.id} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                    background: "#f8fafc", borderRadius: 10, flexWrap: "wrap",
+                  }}>
+                    <div style={{
+                      width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                      background: "linear-gradient(135deg,#0077b6,#00b4d8)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "white", fontWeight: 800, fontSize: 15,
+                    }}>
+                      {staff.name.slice(0, 1)}
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 14, minWidth: 90 }}>{staff.name}</div>
+                    <div style={{ display: "flex", gap: 16, flex: 1, alignItems: "center", flexWrap: "wrap" }}>
+                      {log?.clock_in ? (
+                        <span style={{ fontSize: 13, color: "#059669", fontWeight: 700 }}>🟢 出勤 {log.clock_in}</span>
+                      ) : (
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>未出勤</span>
+                      )}
+                      {log?.clock_out ? (
+                        <span style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700 }}>🟣 退勤 {log.clock_out}</span>
+                      ) : log?.clock_in ? (
+                        <span style={{ fontSize: 12, color: "#f59e0b" }}>勤務中…</span>
+                      ) : null}
+                      {log?.work_minutes != null && (
+                        <span style={{ fontSize: 12, color: "#64748b" }}>
+                          ⏱ {Math.floor(log.work_minutes / 60)}時間{log.work_minutes % 60}分
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {!log?.clock_in && (
+                        <button className="btn-primary"
+                          onClick={() => handleClockIn(staff.id, staff.name)}
+                          style={{ fontSize: 12, padding: "6px 16px", background: "#059669" }}>
+                          出勤
+                        </button>
+                      )}
+                      {log?.clock_in && !log?.clock_out && (
+                        <button className="btn-primary"
+                          onClick={() => handleClockOut(staff.id)}
+                          style={{ fontSize: 12, padding: "6px 16px", background: "#7c3aed" }}>
+                          退勤
+                        </button>
+                      )}
+                      {log?.clock_out && (
+                        <span style={{
+                          fontSize: 11, padding: "4px 12px", borderRadius: 12,
+                          background: "#f3e8ff", color: "#7c3aed", fontWeight: 700,
+                        }}>
+                          ✓ 完了
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 月次勤務サマリー */}
+          {monthTotals.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+              {monthTotals.map(({ staff, totalMins, workDays }) => (
+                <div key={staff.id} className="card" style={{ padding: "14px 16px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0a2540", marginBottom: 6 }}>{staff.name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#0077b6" }}>
+                    {Math.floor(totalMins / 60)}<span style={{ fontSize: 12 }}>h</span>{totalMins % 60}<span style={{ fontSize: 12 }}>m</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>出勤 {workDays}日</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 月次勤怠ログテーブル */}
+          <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#0a2540" }}>📋 月次勤怠ログ</div>
+              <select className="form-input" style={{ width: "auto", fontSize: 12 }}
+                value={`${selYear}-${selMonth}`}
+                onChange={(e) => { const [y, m] = e.target.value.split("-"); setSelYear(+y); setSelMonth(+m); }}>
+                {months.map((m) => (
+                  <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>日付</th>
+                  <th>氏名</th>
+                  <th style={{ textAlign: "center" }}>出勤時刻</th>
+                  <th style={{ textAlign: "center" }}>退勤時刻</th>
+                  <th style={{ textAlign: "center" }}>実働時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: "center", color: "#94a3b8", padding: 32 }}>
+                      この月の記録はありません
+                    </td>
+                  </tr>
+                ) : monthLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td style={{ fontSize: 13 }}>{log.date}</td>
+                    <td style={{ fontWeight: 600 }}>{log.staff_name}</td>
+                    <td style={{ textAlign: "center", color: "#059669", fontWeight: 700 }}>{log.clock_in ?? "—"}</td>
+                    <td style={{ textAlign: "center", color: "#7c3aed", fontWeight: 700 }}>{log.clock_out ?? "—"}</td>
+                    <td style={{ textAlign: "center", color: "#64748b" }}>
+                      {log.work_minutes != null
+                        ? `${Math.floor(log.work_minutes / 60)}h${log.work_minutes % 60}m`
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

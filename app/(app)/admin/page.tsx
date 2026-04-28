@@ -10,16 +10,30 @@ import { useSession } from "@/hooks/useSession";
 
 type Tab = "facility" | "staff" | "children";
 
+// 保有資格の選択肢
+const QUALIFICATION_OPTIONS = [
+  "保育士", "児童発達支援管理責任者", "社会福祉士", "精神保健福祉士",
+  "公認心理師", "臨床心理士", "作業療法士", "理学療法士",
+  "言語聴覚士", "看護師", "介護福祉士",
+];
+
 // 職員型
 type StaffMember = {
   id: string; org_id: string; facility_id: string;
   name: string; role: "admin" | "manager" | "staff";
   login_id: string; created_at: string;
+  phone?: string;
+  employment_type?: string;
+  qualifications?: string[];
+  hire_date?: string;
+  emergency_contact?: string;
 };
 
 const EMPTY_STAFF = {
   name: "", role: "staff" as "admin" | "manager" | "staff",
   login_id: "", password: "", facility_id: "",
+  phone: "", employment_type: "正社員", qualifications: [] as string[],
+  hire_date: "", emergency_contact: "",
 };
 
 function genId() { return crypto.randomUUID(); }
@@ -81,6 +95,11 @@ export default function AdminPage() {
           role: staffForm.role,
           facility_id: staffForm.facility_id || session!.selected_facility_id,
           org_id: session!.org_id,
+          phone: staffForm.phone.trim() || null,
+          employment_type: staffForm.employment_type || null,
+          qualifications: staffForm.qualifications.length > 0 ? JSON.stringify(staffForm.qualifications) : null,
+          hire_date: staffForm.hire_date || null,
+          emergency_contact: staffForm.emergency_contact.trim() || null,
         }),
       });
       const json = await res.json();
@@ -98,6 +117,11 @@ export default function AdminPage() {
         role: staffForm.role,
         login_id: staffForm.login_id.trim(),
         created_at: new Date().toISOString(),
+        phone: staffForm.phone.trim() || undefined,
+        employment_type: staffForm.employment_type || undefined,
+        qualifications: staffForm.qualifications,
+        hire_date: staffForm.hire_date || undefined,
+        emergency_contact: staffForm.emergency_contact.trim() || undefined,
       };
       setStaffList((prev) => [newStaff, ...prev]);
       setStaffForm({ ...EMPTY_STAFF });
@@ -403,6 +427,54 @@ export default function AdminPage() {
                     {DUMMY_FACILITIES.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label style={labelStyle}>雇用形態</label>
+                  <select className="form-input" value={staffForm.employment_type} onChange={(e) => setStaffForm(p => ({ ...p, employment_type: e.target.value }))}>
+                    <option value="正社員">正社員</option>
+                    <option value="パート">パート</option>
+                    <option value="派遣">派遣</option>
+                    <option value="業務委託">業務委託</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>電話番号</label>
+                  <input className="form-input" type="tel" placeholder="例: 090-0000-0000" value={staffForm.phone} onChange={(e) => setStaffForm(p => ({ ...p, phone: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>入社日</label>
+                  <input className="form-input" type="date" value={staffForm.hire_date} onChange={(e) => setStaffForm(p => ({ ...p, hire_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>緊急連絡先</label>
+                  <input className="form-input" placeholder="例: 090-0000-0001（配偶者）" value={staffForm.emergency_contact} onChange={(e) => setStaffForm(p => ({ ...p, emergency_contact: e.target.value }))} />
+                </div>
+                {/* 保有資格 */}
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>保有資格</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {QUALIFICATION_OPTIONS.map((q) => {
+                      const checked = staffForm.qualifications.includes(q);
+                      return (
+                        <label key={q} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12,
+                          padding: "5px 12px", borderRadius: 16,
+                          background: checked ? "#dbeafe" : "#f8fafc",
+                          border: checked ? "1.5px solid #3b82f6" : "1.5px solid #e2e8f0",
+                          color: checked ? "#1d4ed8" : "#475569", fontWeight: checked ? 700 : 400,
+                          transition: "all 0.15s" }}>
+                          <input type="checkbox" style={{ display: "none" }}
+                            checked={checked}
+                            onChange={() => setStaffForm(p => ({
+                              ...p,
+                              qualifications: checked
+                                ? p.qualifications.filter((x) => x !== q)
+                                : [...p.qualifications, q],
+                            }))} />
+                          {checked ? "✓ " : ""}{q}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               {/* エラー表示 */}
               {staffError && (
@@ -428,7 +500,10 @@ export default function AdminPage() {
                   <th>氏名</th>
                   <th>ログインID</th>
                   <th>役割</th>
+                  <th>雇用形態</th>
                   <th>所属施設</th>
+                  <th>保有資格</th>
+                  <th>入社日</th>
                 </tr>
               </thead>
               <tbody>
@@ -436,14 +511,29 @@ export default function AdminPage() {
                   const fac = DUMMY_FACILITIES.find((f) => f.id === s.facility_id);
                   return (
                     <tr key={s.id}>
-                      <td style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                        {s.phone && <div style={{ fontSize: 11, color: "#94a3b8" }}>{s.phone}</div>}
+                      </td>
                       <td style={{ fontSize: 12, color: "#64748b" }}>{s.login_id}</td>
                       <td>
                         <span className={`badge ${s.role === "admin" ? "badge-red" : s.role === "manager" ? "badge-blue" : "badge-green"}`}>
                           {s.role === "admin" ? "本部管理者" : s.role === "manager" ? "管理者" : "職員"}
                         </span>
                       </td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>{s.employment_type ?? "—"}</td>
                       <td style={{ fontSize: 13 }}>{fac?.name ?? "—"}</td>
+                      <td>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {(s.qualifications ?? []).length > 0
+                            ? (s.qualifications ?? []).map((q) => (
+                                <span key={q} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#dbeafe", color: "#1d4ed8", fontWeight: 700 }}>{q}</span>
+                              ))
+                            : <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>
+                          }
+                        </div>
+                      </td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>{s.hire_date ?? "—"}</td>
                     </tr>
                   );
                 })}

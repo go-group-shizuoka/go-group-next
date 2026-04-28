@@ -27,10 +27,29 @@ export type Staff = {
   facility_id: string;
   name: string;
   role: "admin" | "manager" | "staff"; // 管理者/施設長/職員
+  login_id?: string;
   email?: string;
   phone?: string;
   hire_date?: string;
+  employment_type?: "正社員" | "パート" | "派遣" | "業務委託"; // 雇用形態
   qualifications?: string[]; // 保有資格
+  emergency_contact?: string; // 緊急連絡先
+};
+
+// 出勤打刻
+export type WorkLog = {
+  id: string;
+  org_id: string;
+  facility_id: string;
+  staff_id: string;
+  staff_name: string;
+  date: string;           // YYYY-MM-DD
+  clock_in?: string;      // HH:MM
+  clock_out?: string;     // HH:MM
+  work_minutes?: number;  // 実労働時間（分）
+  break_minutes?: number; // 休憩時間（分）デフォルト60
+  memo?: string;
+  created_at: string;
 };
 
 // 児童（利用者）
