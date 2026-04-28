@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { fetchByFacility, saveRecord } from "@/lib/supabase";
 import type { AttendanceRecord, Child } from "@/types";
-import * as XLSX from "xlsx";
+// xlsxはexceljsに移行
 import { useSession } from "@/hooks/useSession";
 
 // 放課後等デイサービスの基本的な単価設定（簡易版）
@@ -153,39 +153,140 @@ export default function BillingPage() {
     setTimeout(() => setSavedMsg(""), 4000);
   };
 
-  // Excel出力
-  const exportExcel = () => {
-    const data = rows.map((r) => ({
-      "氏名": r.child.name,
-      "受給者証番号": r.child.recipient_number ?? "",
-      "上限管理事業所": r.child.limit_manager ?? "",
-      "学年": r.child.grade ?? "",
-      "診断名": r.child.diagnosis ?? "",
-      "利用日数": r.useDays,
-      "1回単価（円）": r.unitPrice,
-      "送迎日数": r.transportDays,
-      "送迎加算（円）": r.transportAddition,
-      "合計（円）": r.totalAmount,
-      "負担上限（円）": r.burdenCap,
-      "利用者負担額（円）": r.userBurden,
-      "給付費（円）": r.publicBurden,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    // 列幅調整
-    ws["!cols"] = [14, 8, 16, 8, 12, 8, 12, 12, 12, 16, 12].map((w) => ({ wch: w }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "請求一覧");
-    // 合計シートを追加
-    const summaryData = [
-      { "項目": "合計利用日数", "値": totals.useDays },
-      { "項目": "合計送迎加算", "値": totals.transportAddition },
-      { "項目": "合計請求額", "値": totals.total },
-      { "項目": "利用者負担合計", "値": totals.userBurden },
-      { "項目": "給付費合計", "値": totals.publicBurden },
-    ];
-    const ws2 = XLSX.utils.json_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, ws2, "合計");
-    XLSX.writeFile(wb, `請求一覧_${fac?.name}_${selYear}年${selMonth}月.xlsx`);
+  // Excel出力（exceljs：枠線・色付き・印刷対応）
+  const exportExcel = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+
+    const thin = { style: "thin" as const, color: { argb: "FFCCCCCC" } };
+    const bd = { top: thin, left: thin, bottom: thin, right: thin };
+
+    // ===== 請求明細シート =====
+    const ws = wb.addWorksheet("請求一覧", {
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, paperSize: 9 },
+    });
+
+    // タイトル
+    ws.mergeCells(1, 1, 1, 13);
+    const titleCell = ws.getCell(1, 1);
+    titleCell.value = `${fac?.name}　請求一覧　${selYear}年${selMonth}月`;
+    titleCell.font = { bold: true, size: 13, color: { argb: "FF0A2540" } };
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 26;
+
+    // ヘッダー
+    const headers = ["氏名", "受給者証番号", "上限管理事業所", "学年", "利用日数", "1回単価(円)", "送迎日数", "送迎加算(円)", "合計額(円)", "負担上限(円)", "利用者負担(円)", "給付費(円)"];
+    const colWidths = [14, 14, 18, 6, 8, 12, 8, 12, 12, 12, 14, 12];
+    ws.getRow(2).height = 24;
+    headers.forEach((h, i) => {
+      const cell = ws.getCell(2, i + 1);
+      cell.value = h;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = bd;
+      ws.getColumn(i + 1).width = colWidths[i];
+    });
+
+    // データ行
+    rows.forEach((row, idx) => {
+      const r = ws.getRow(idx + 3);
+      r.height = 20;
+      const bg = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: idx % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" } };
+      const vals: (string | number)[] = [
+        row.child.name,
+        row.child.recipient_number ?? "",
+        row.child.limit_manager ?? "",
+        row.child.grade ?? "",
+        row.useDays,
+        row.unitPrice,
+        row.transportDays,
+        row.transportAddition,
+        row.totalAmount,
+        row.burdenCap,
+        row.userBurden,
+        row.publicBurden,
+      ];
+      vals.forEach((v, i) => {
+        const cell = r.getCell(i + 1);
+        cell.value = v;
+        cell.border = bd;
+        cell.fill = bg;
+        cell.font = { size: 10 };
+        if (i >= 4) {
+          cell.alignment = { horizontal: "right", vertical: "middle" };
+          if (typeof v === "number" && v > 0) {
+            cell.numFmt = "#,##0";
+            if (i === 10) cell.font = { bold: true, color: { argb: "FFD97706" }, size: 10 };
+            if (i === 11) cell.font = { bold: true, color: { argb: "FF7C3AED" }, size: 10 };
+            if (i === 8)  cell.font = { bold: true, color: { argb: "FF059669" }, size: 10 };
+          }
+        } else {
+          cell.alignment = { horizontal: "left", vertical: "middle" };
+          if (i === 0) cell.font = { bold: true, size: 10 };
+        }
+      });
+    });
+
+    // 合計行
+    const totalRow = ws.getRow(rows.length + 3);
+    totalRow.height = 22;
+    const totalVals: (string | number)[] = ["合計", "", "", "", totals.useDays, "", totals.transportDays, totals.transportAddition, totals.total, "", totals.userBurden, totals.publicBurden];
+    totalVals.forEach((v, i) => {
+      const cell = totalRow.getCell(i + 1);
+      cell.value = v;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A2540" } };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+      cell.border = bd;
+      if (i >= 4 && typeof v === "number") {
+        cell.alignment = { horizontal: "right", vertical: "middle" };
+        cell.numFmt = "#,##0";
+      } else {
+        cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle" };
+      }
+    });
+
+    // ===== 集計サマリーシート =====
+    const ws2 = wb.addWorksheet("集計サマリー");
+    ws2.getColumn(1).width = 20;
+    ws2.getColumn(2).width = 16;
+    [
+      ["対象施設", fac?.name ?? ""],
+      ["対象月", `${selYear}年${selMonth}月`],
+      ["対象児童数", `${rows.length}名`],
+      ["", ""],
+      ["合計利用日数", totals.useDays],
+      ["送迎加算合計", totals.transportAddition],
+      ["合計請求額", totals.total],
+      ["利用者負担合計", totals.userBurden],
+      ["給付費合計", totals.publicBurden],
+    ].forEach((row, i) => {
+      const r = ws2.getRow(i + 1);
+      r.height = 22;
+      const c1 = r.getCell(1);
+      const c2 = r.getCell(2);
+      c1.value = row[0];
+      c2.value = row[1];
+      if (row[0]) {
+        c1.font = { bold: true, size: 10 };
+        c1.border = bd;
+        c2.border = bd;
+        if (typeof row[1] === "number") {
+          c2.numFmt = "#,##0";
+          c2.alignment = { horizontal: "right" };
+        }
+      }
+    });
+
+    // ダウンロード
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `請求一覧_${fac?.name}_${selYear}年${selMonth}月.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const months = genMonths(12);
