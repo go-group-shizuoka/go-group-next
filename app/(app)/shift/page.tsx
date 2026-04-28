@@ -8,6 +8,7 @@ import { fetchByFacility, saveRecord } from "@/lib/supabase";
 import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { ShiftRecord, WorkLog } from "@/types";
 // Excel出力：xlsx-js-style（枠線・色付き、純粋JSなのでVercelでも動作）
+import { todayISO, nowHHMM, genMonths, DOW } from "@/lib/utils";
 
 type TabKey = "shift" | "worklog";
 
@@ -25,37 +26,9 @@ const SHIFT_STYLE: Record<string, { bg: string; color: string }> = {
   "欠":   { bg: "#fee2e2", color: "#dc2626" },
 };
 
-const DOW = ["日", "月", "火", "水", "木", "金", "土"];
-
 // 月の日数を取得
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
-}
-
-// 過去12ヶ月の選択肢を生成
-function genMonths(count = 12) {
-  const months = [];
-  const d = new Date();
-  for (let i = 0; i < count; i++) {
-    months.push({
-      year: d.getFullYear(), month: d.getMonth() + 1,
-      label: `${d.getFullYear()}年${d.getMonth() + 1}月`,
-    });
-    d.setMonth(d.getMonth() - 1);
-  }
-  return months;
-}
-
-// 現在時刻を HH:MM 形式で取得
-function nowTime() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-// 今日の日付を YYYY-MM-DD 形式で取得
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export default function ShiftPage() {
@@ -152,18 +125,7 @@ export default function ShiftPage() {
   const exportShiftExcel = async () => {
     // xlsx-js-styleを動的インポート（クライアント専用・純粋JS）
     const XLSXStyle = (await import("xlsx-js-style")).default;
-
-    // 列番号(1始まり)をA,B,...,AA,AB,...に変換するヘルパー
-    const colName = (n: number): string => {
-      let s = "";
-      let nn = n;
-      while (nn > 0) { nn--; s = String.fromCharCode(65 + (nn % 26)) + s; nn = Math.floor(nn / 26); }
-      return s;
-    };
-
-    // セルスタイル部品
-    const thin = { style: "thin", color: { rgb: "CCCCCC" } };
-    const bd = { top: thin, left: thin, bottom: thin, right: thin };
+    const { xlsBorder: bd, colName } = await import("@/lib/excel-style");
 
     const totalCols = days.length + 2; // 氏名列 + 日付列 + 出勤日数列
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,7 +259,7 @@ export default function ShiftPage() {
   };
 
   // === 出勤打刻 ===
-  const today_str = todayStr();
+  const today_str = todayISO();
   const todayLogs = workLogs.filter((w) => w.date === today_str);
 
   // 出勤打刻
@@ -311,7 +273,7 @@ export default function ShiftPage() {
       staff_id: staffId,
       staff_name: staffName,
       date: today_str,
-      clock_in: nowTime(),
+      clock_in: nowHHMM(),
       break_minutes: 60,
       created_at: new Date().toISOString(),
     };
@@ -328,7 +290,7 @@ export default function ShiftPage() {
   const handleClockOut = async (staffId: string) => {
     const existing = todayLogs.find((w) => w.staff_id === staffId);
     if (!existing || existing.clock_out) return;
-    const clockOut = nowTime();
+    const clockOut = nowHHMM();
     const [inH, inM] = (existing.clock_in ?? "09:00").split(":").map(Number);
     const [outH, outM] = clockOut.split(":").map(Number);
     const totalMins = (outH * 60 + outM) - (inH * 60 + inM);

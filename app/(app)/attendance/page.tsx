@@ -7,16 +7,10 @@ import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord } from "@/types";
 // Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
+import { todayISO, nowHHMM, DOW } from "@/lib/utils";
 
-function nowHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-}
-function todayISO() {
-  return new Date().toISOString().slice(0,10);
-}
 function getTodayDow() {
-  return ["日","月","火","水","木","金","土"][new Date().getDay()];
+  return DOW[new Date().getDay()];
 }
 
 export default function AttendancePage() {
@@ -76,8 +70,7 @@ export default function AttendancePage() {
   const exportExcel = async () => {
     const XLSXStyle = (await import("xlsx-js-style")).default;
 
-    const thin = { style: "thin", color: { rgb: "CCCCCC" } };
-    const bd = { top: thin, left: thin, bottom: thin, right: thin };
+    const { xlsBorder: bd } = await import("@/lib/excel-style");
     const COLS = ["A","B","C","D","E","F","G"];
     const colWidths = [{ wch: 16 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }];
 

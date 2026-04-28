@@ -7,9 +7,9 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES, DUMMY_STAFF } from "@/lib/dummy-data"
 import { saveRecord, fetchByFacility, supabase } from "@/lib/supabase";
 import type { DailyReport, AttendanceRecord, WorkLog } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO, DOW } from "@/lib/utils";
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-function getTodayDow() { return ["日","月","火","水","木","金","土"][new Date().getDay()]; }
+function getTodayDow() { return DOW[new Date().getDay()]; }
 function genId() { return crypto.randomUUID(); }
 
 // JSON.parse のラッパー（破損データでもクラッシュしない）

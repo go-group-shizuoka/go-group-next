@@ -8,13 +8,13 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacility, supabase, uploadPhoto } from "@/lib/supabase";
 import type { MessageRecord } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO } from "@/lib/utils";
 
 function genId() { return crypto.randomUUID(); }
 function nowStr() {
   const d = new Date();
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
-function todayISO() { return new Date().toISOString().slice(0,10); }
 
 // ===== テンプレートメッセージ =====
 const TEMPLATES = [

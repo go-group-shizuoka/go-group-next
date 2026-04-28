@@ -6,15 +6,13 @@ import { DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
 import type { UserSession, ActivityRecord } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO } from "@/lib/utils";
 
 const ACTIVITY_TYPES = [
   "個別支援","集団療育","運動療育","言語療育",
   "学習支援","リハビリ","外出支援","イベント","制作活動","その他",
 ];
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 function genId() {
   return crypto.randomUUID();
 }

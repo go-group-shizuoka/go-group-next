@@ -7,9 +7,9 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, SupportPlan } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO } from "@/lib/utils";
 
 function genId() { return crypto.randomUUID(); }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 // 半年後の日付
 function halfYearLater() {

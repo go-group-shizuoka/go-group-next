@@ -8,12 +8,10 @@ import { DUMMY_FACILITIES, DUMMY_CHILDREN } from "@/lib/dummy-data";
 import { fetchByDate, fetchByFacility } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord, ActivityRecord, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO, DOW } from "@/lib/utils";
 
 function getTodayDow(): string {
-  return ["日","月","火","水","木","金","土"][new Date().getDay()];
-}
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return DOW[new Date().getDay()];
 }
 function getTodayDisplay(): string {
   const d = new Date();

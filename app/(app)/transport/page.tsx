@@ -7,15 +7,9 @@ import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import { saveRecord, fetchByDate } from "@/lib/supabase";
 import type { UserSession } from "@/types";
 import { useSession } from "@/hooks/useSession";
+import { todayISO, nowHHMM, DOW } from "@/lib/utils";
 
-const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
-
-function nowHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-function getTodayDow() { return DOW_JP[new Date().getDay()]; }
+function getTodayDow() { return DOW[new Date().getDay()]; }
 
 type TransportStatus = "待機中" | "出発" | "到着済" | "欠席";
 type RouteType = "来所" | "帰所";

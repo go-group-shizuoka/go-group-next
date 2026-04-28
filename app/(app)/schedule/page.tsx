@@ -6,8 +6,7 @@ import { useState } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
-
-const DOW_JP = ["日", "月", "火", "水", "木", "金", "土"];
+import { DOW as DOW_JP } from "@/lib/utils";
 
 // YYYY-MM の月全日を生成
 function buildCalendar(year: number, month: number) {
