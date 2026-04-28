@@ -242,7 +242,7 @@ export default function AttendancePage() {
             <div style={{ display: "flex", gap: 8 }}>
               {!rec.arrive && (
                 <button className="btn-primary" onClick={() => handleArrive(selChild)} disabled={uploading}>
-                  {uploading ? "保存中..." : "🟢 来所記録"}
+                  {uploading ? "保存中..." : "🟢 到着記録"}
                 </button>
               )}
               {rec.arrive && !rec.depart && (
@@ -251,7 +251,7 @@ export default function AttendancePage() {
                   onClick={() => handleDepart(selChild)}
                   style={{ background: "#059669" }}
                 >
-                  🏠 退所記録
+                  🏠 出発記録
                 </button>
               )}
               <button className="btn-secondary" onClick={() => { setSelChild(null); setPhotoFile(null); setPhotoPreview(null); }}>
@@ -269,8 +269,8 @@ export default function AttendancePage() {
             <tr>
               <th>児童名</th>
               <th>体温</th>
-              <th>退所時刻</th>
-              <th>来所時刻</th>
+              <th>到着時刻</th>
+              <th>出発時刻</th>
               <th>送迎</th>
               <th>操作</th>
             </tr>
@@ -315,11 +315,11 @@ export default function AttendancePage() {
                     </div>
                   </td>
                   <td style={{ fontSize: 13 }}>{rec.temp ?? "—"}</td>
-                  <td style={{ fontSize: 13, fontWeight: rec.depart ? 700 : 400, color: rec.depart ? "#0077b6" : "#94a3b8" }}>
-                    {rec.depart ?? "—"}
-                  </td>
                   <td style={{ fontSize: 13, fontWeight: rec.arrive ? 700 : 400, color: rec.arrive ? "#059669" : "#94a3b8" }}>
                     {rec.arrive ?? "—"}
+                  </td>
+                  <td style={{ fontSize: 13, fontWeight: rec.depart ? 700 : 400, color: rec.depart ? "#0077b6" : "#94a3b8" }}>
+                    {rec.depart ?? "—"}
                   </td>
                   <td>
                     {child.has_transport ? (
@@ -345,7 +345,7 @@ export default function AttendancePage() {
                           background: rec.arrive ? "#059669" : "#0077b6",
                         }}
                       >
-                        {rec.arrive ? "退所" : "来所"}
+                        {rec.arrive ? "出発" : "到着"}
                       </button>
                     )}
                   </td>
