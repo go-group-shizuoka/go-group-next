@@ -242,7 +242,7 @@ export default function AttendancePage() {
             <div style={{ display: "flex", gap: 8 }}>
               {!rec.arrive && (
                 <button className="btn-primary" onClick={() => handleArrive(selChild)} disabled={uploading}>
-                  {uploading ? "保存中..." : "🟢 到着記録"}
+                  {uploading ? "保存中..." : "🟢 入室記録"}
                 </button>
               )}
               {rec.arrive && !rec.depart && (
@@ -251,7 +251,7 @@ export default function AttendancePage() {
                   onClick={() => handleDepart(selChild)}
                   style={{ background: "#059669" }}
                 >
-                  🏠 出発記録
+                  🏠 退出記録
                 </button>
               )}
               <button className="btn-secondary" onClick={() => { setSelChild(null); setPhotoFile(null); setPhotoPreview(null); }}>
@@ -269,8 +269,8 @@ export default function AttendancePage() {
             <tr>
               <th>児童名</th>
               <th>体温</th>
-              <th>到着時刻</th>
-              <th>出発時刻</th>
+              <th>入室時刻</th>
+              <th>退出時刻</th>
               <th>送迎</th>
               <th>操作</th>
             </tr>
@@ -345,7 +345,7 @@ export default function AttendancePage() {
                           background: rec.arrive ? "#059669" : "#0077b6",
                         }}
                       >
-                        {rec.arrive ? "出発" : "到着"}
+                        {rec.arrive ? "退出" : "入室"}
                       </button>
                     )}
                   </td>
