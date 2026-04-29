@@ -2,9 +2,9 @@
 // ==================== 管理画面 ====================
 // 施設管理・職員管理・児童登録
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DUMMY_FACILITIES, DUMMY_STAFF, DUMMY_CHILDREN } from "@/lib/dummy-data";
-import { saveRecord } from "@/lib/supabase";
+import { saveRecord, fetchByOrg } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -53,25 +53,44 @@ const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 
 export default function AdminPage() {
   const session = useSession();
   const [tab, setTab] = useState<Tab>("children");
-  const [children, setChildren] = useState<Child[]>(DUMMY_CHILDREN);
+  const [children, setChildren] = useState<Child[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [showChildForm, setShowChildForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_CHILD });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // 職員管理用state
-  const [staffList, setStaffList] = useState<StaffMember[]>(
-    DUMMY_STAFF.map((s) => ({
-      id: s.id, org_id: s.org_id, facility_id: s.facility_id,
-      name: s.name, role: s.role, login_id: s.id,
-      created_at: new Date().toISOString(),
-    }))
-  );
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(true);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [staffForm, setStaffForm] = useState({ ...EMPTY_STAFF });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffSaved, setStaffSaved] = useState(false);
   const [staffError, setStaffError] = useState("");
+
+  // Supabaseから児童・職員を読み込む
+  useEffect(() => {
+    if (!session) return;
+    // 児童読み込み
+    fetchByOrg<Child>("ng_children", session.org_id).then((rows) => {
+      setChildren(rows.length > 0 ? rows : DUMMY_CHILDREN);
+      setLoadingChildren(false);
+    });
+    // 職員読み込み
+    fetchByOrg<StaffMember>("ng_staff", session.org_id).then((rows) => {
+      if (rows.length > 0) {
+        setStaffList(rows);
+      } else {
+        setStaffList(DUMMY_STAFF.map((s) => ({
+          id: s.id, org_id: s.org_id, facility_id: s.facility_id,
+          name: s.name, role: s.role, login_id: s.id,
+          created_at: new Date().toISOString(),
+        })));
+      }
+      setLoadingStaff(false);
+    });
+  }, [session]);
 
   if (!session) return null;
 
@@ -206,7 +225,7 @@ export default function AdminPage() {
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
-              登録児童数：{children.length}名
+              {loadingChildren ? "読み込み中..." : `登録児童数：${children.length}名`}
             </div>
             {isManager && (
               <button className="btn-primary" onClick={() => { setShowChildForm(!showChildForm); setForm({ ...EMPTY_CHILD, facility_id: session.selected_facility_id }); }}>
@@ -381,7 +400,9 @@ export default function AdminPage() {
       {tab === "staff" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>登録職員数：{staffList.length}名</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
+              {loadingStaff ? "読み込み中..." : `登録職員数：${staffList.length}名`}
+            </div>
             {isManager && (
               <button className="btn-primary" onClick={() => { setShowStaffForm(!showStaffForm); setStaffForm({ ...EMPTY_STAFF, facility_id: session.selected_facility_id }); }}>
                 ＋ 職員追加
