@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_FACILITIES, DUMMY_STAFF, DUMMY_CHILDREN } from "@/lib/dummy-data";
-import { saveRecord, fetchByOrg } from "@/lib/supabase";
+import { saveRecord, fetchByOrg, deleteRecord } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -56,6 +56,7 @@ export default function AdminPage() {
   const [children, setChildren] = useState<Child[]>([]);
   const [loadingChildren, setLoadingChildren] = useState(true);
   const [showChildForm, setShowChildForm] = useState(false);
+  const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_CHILD });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -64,6 +65,7 @@ export default function AdminPage() {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(true);
   const [showStaffForm, setShowStaffForm] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
   const [staffForm, setStaffForm] = useState({ ...EMPTY_STAFF });
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffSaved, setStaffSaved] = useState(false);
@@ -98,59 +100,115 @@ export default function AdminPage() {
   // staffは閲覧のみ（フォームを隠す）
   const isManager = session.role === "admin" || session.role === "manager";
 
-  // 職員登録（Supabase Auth + ng_staffテーブルへ登録）
+  // 職員登録・編集（Supabase Auth + ng_staffテーブルへ登録）
   const handleSaveStaff = async () => {
-    if (!staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id || !staffForm.password.trim()) return;
+    if (!staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id) return;
+    // 新規登録時はパスワード必須
+    if (!editingStaffId && !staffForm.password.trim()) return;
     setStaffSaving(true);
     setStaffError("");
     try {
-      const res = await fetch("/api/admin/create-staff", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          login_id: staffForm.login_id.trim(),
-          password: staffForm.password.trim(),
+      if (editingStaffId) {
+        // ===== 編集モード：ng_staffテーブルのみ更新 =====
+        await saveRecord("ng_staff", {
+          id: editingStaffId,
+          org_id: session!.org_id,
+          facility_id: staffForm.facility_id,
           name: staffForm.name.trim(),
           role: staffForm.role,
-          facility_id: staffForm.facility_id || session!.selected_facility_id,
-          org_id: session!.org_id,
+          login_id: staffForm.login_id.trim(),
           phone: staffForm.phone.trim() || null,
           employment_type: staffForm.employment_type || null,
-          qualifications: staffForm.qualifications.length > 0 ? JSON.stringify(staffForm.qualifications) : null,
+          qualifications: staffForm.qualifications.length > 0 ? staffForm.qualifications : null,
           hire_date: staffForm.hire_date || null,
           emergency_contact: staffForm.emergency_contact.trim() || null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setStaffError(json.error ?? "登録に失敗しました");
-        setStaffSaving(false);
-        return;
+        });
+        setStaffList((prev) => prev.map((s) => s.id === editingStaffId ? {
+          ...s,
+          name: staffForm.name.trim(),
+          role: staffForm.role,
+          facility_id: staffForm.facility_id,
+          login_id: staffForm.login_id.trim(),
+          phone: staffForm.phone.trim() || undefined,
+          employment_type: staffForm.employment_type || undefined,
+          qualifications: staffForm.qualifications,
+          hire_date: staffForm.hire_date || undefined,
+          emergency_contact: staffForm.emergency_contact.trim() || undefined,
+        } : s));
+      } else {
+        // ===== 新規登録モード =====
+        const res = await fetch("/api/admin/create-staff", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            login_id: staffForm.login_id.trim(),
+            password: staffForm.password.trim(),
+            name: staffForm.name.trim(),
+            role: staffForm.role,
+            facility_id: staffForm.facility_id || session!.selected_facility_id,
+            org_id: session!.org_id,
+            phone: staffForm.phone.trim() || null,
+            employment_type: staffForm.employment_type || null,
+            qualifications: staffForm.qualifications.length > 0 ? JSON.stringify(staffForm.qualifications) : null,
+            hire_date: staffForm.hire_date || null,
+            emergency_contact: staffForm.emergency_contact.trim() || null,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) {
+          setStaffError(json.error ?? "登録に失敗しました");
+          setStaffSaving(false);
+          return;
+        }
+        const newStaff: StaffMember = {
+          id: genId(),
+          org_id: session!.org_id,
+          facility_id: staffForm.facility_id || session!.selected_facility_id,
+          name: staffForm.name.trim(),
+          role: staffForm.role,
+          login_id: staffForm.login_id.trim(),
+          created_at: new Date().toISOString(),
+          phone: staffForm.phone.trim() || undefined,
+          employment_type: staffForm.employment_type || undefined,
+          qualifications: staffForm.qualifications,
+          hire_date: staffForm.hire_date || undefined,
+          emergency_contact: staffForm.emergency_contact.trim() || undefined,
+        };
+        setStaffList((prev) => [newStaff, ...prev]);
       }
-      // 画面上のリストに追加
-      const newStaff: StaffMember = {
-        id: genId(),
-        org_id: session!.org_id,
-        facility_id: staffForm.facility_id || session!.selected_facility_id,
-        name: staffForm.name.trim(),
-        role: staffForm.role,
-        login_id: staffForm.login_id.trim(),
-        created_at: new Date().toISOString(),
-        phone: staffForm.phone.trim() || undefined,
-        employment_type: staffForm.employment_type || undefined,
-        qualifications: staffForm.qualifications,
-        hire_date: staffForm.hire_date || undefined,
-        emergency_contact: staffForm.emergency_contact.trim() || undefined,
-      };
-      setStaffList((prev) => [newStaff, ...prev]);
       setStaffForm({ ...EMPTY_STAFF });
       setShowStaffForm(false);
+      setEditingStaffId(null);
       setStaffSaved(true);
       setTimeout(() => setStaffSaved(false), 3000);
     } catch (e) {
       setStaffError(String(e));
     }
     setStaffSaving(false);
+  };
+
+  const handleDeleteStaff = async (id: string, name: string) => {
+    if (!confirm(`「${name}」を削除しますか？\nこの操作は取り消せません。`)) return;
+    await deleteRecord("ng_staff", id);
+    setStaffList((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleEditStaff = (staff: StaffMember) => {
+    setStaffForm({
+      name: staff.name,
+      login_id: staff.login_id,
+      password: "", // パスワードは変更時のみ入力
+      role: staff.role,
+      facility_id: staff.facility_id,
+      phone: staff.phone ?? "",
+      employment_type: staff.employment_type ?? "正社員",
+      qualifications: staff.qualifications ?? [],
+      hire_date: staff.hire_date ?? "",
+      emergency_contact: staff.emergency_contact ?? "",
+    });
+    setEditingStaffId(staff.id);
+    setShowStaffForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDayToggle = (day: string) => {
@@ -166,7 +224,7 @@ export default function AdminPage() {
     if (!form.name.trim() || !form.dob || !form.facility_id) return;
     setSaving(true);
     const child: Child = {
-      id: genId(),
+      id: editingChildId ?? genId(),
       org_id: session.org_id,
       facility_id: form.facility_id || session.selected_facility_id,
       name: form.name,
@@ -185,12 +243,44 @@ export default function AdminPage() {
       created_at: new Date().toISOString(),
     };
     await saveRecord("ng_children", child as unknown as Record<string, unknown>);
-    setChildren((prev) => [child, ...prev]);
+    if (editingChildId) {
+      setChildren((prev) => prev.map((c) => c.id === editingChildId ? child : c));
+    } else {
+      setChildren((prev) => [child, ...prev]);
+    }
     setForm({ ...EMPTY_CHILD });
     setShowChildForm(false);
+    setEditingChildId(null);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleDeleteChild = async (id: string, name: string) => {
+    if (!confirm(`「${name}」を削除しますか？\nこの操作は取り消せません。`)) return;
+    await deleteRecord("ng_children", id);
+    setChildren((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleEditChild = (child: Child) => {
+    setForm({
+      name: child.name,
+      name_kana: child.name_kana ?? "",
+      dob: child.dob,
+      grade: child.grade ?? "",
+      gender: (child.gender as "" | "男" | "女") ?? "",
+      diagnosis: child.diagnosis ?? "",
+      use_days: child.use_days ?? [],
+      has_transport: child.has_transport ?? false,
+      parent_name: child.parent_name ?? "",
+      parent_phone: child.parent_phone ?? "",
+      notes: child.notes ?? "",
+      support_content: child.support_content ?? "",
+      facility_id: child.facility_id,
+    });
+    setEditingChildId(child.id);
+    setShowChildForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -228,7 +318,7 @@ export default function AdminPage() {
               {loadingChildren ? "読み込み中..." : `登録児童数：${children.length}名`}
             </div>
             {isManager && (
-              <button className="btn-primary" onClick={() => { setShowChildForm(!showChildForm); setForm({ ...EMPTY_CHILD, facility_id: session.selected_facility_id }); }}>
+              <button className="btn-primary" onClick={() => { setEditingChildId(null); setForm({ ...EMPTY_CHILD, facility_id: session.selected_facility_id }); setShowChildForm(true); }}>
                 ＋ 新規登録
               </button>
             )}
@@ -244,7 +334,9 @@ export default function AdminPage() {
           {/* 新規登録フォーム */}
           {showChildForm && isManager && (
             <div className="card" style={{ padding: 24, marginBottom: 20, border: "2px solid #0077b6" }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20, color: "#0077b6" }}>📝 新規児童登録</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20, color: "#0077b6" }}>
+                {editingChildId ? "✏️ 児童情報を編集" : "📝 新規児童登録"}
+              </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 {/* 氏名 */}
@@ -347,9 +439,9 @@ export default function AdminPage() {
                   onClick={handleSaveChild}
                   disabled={saving || !form.name.trim() || !form.dob || !form.facility_id}
                   style={{ minWidth: 100 }}>
-                  {saving ? "保存中..." : "登録する"}
+                  {saving ? "保存中..." : editingChildId ? "✅ 更新する" : "登録する"}
                 </button>
-                <button className="btn-secondary" onClick={() => setShowChildForm(false)}>キャンセル</button>
+                <button className="btn-secondary" onClick={() => { setShowChildForm(false); setEditingChildId(null); }}>キャンセル</button>
               </div>
             </div>
           )}
@@ -366,6 +458,7 @@ export default function AdminPage() {
                   <th>施設</th>
                   <th>送迎</th>
                   <th>状態</th>
+                  {isManager && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -387,6 +480,20 @@ export default function AdminPage() {
                           {c.active ? "在籍" : "退所"}
                         </span>
                       </td>
+                      {isManager && (
+                        <td>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => handleEditChild(c)}
+                              style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6, border: "1.5px solid #0077b6", background: "white", color: "#0077b6", cursor: "pointer", fontWeight: 600 }}>
+                              編集
+                            </button>
+                            <button onClick={() => handleDeleteChild(c.id, c.name)}
+                              style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6, border: "1.5px solid #ef4444", background: "white", color: "#ef4444", cursor: "pointer", fontWeight: 600 }}>
+                              削除
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -404,7 +511,7 @@ export default function AdminPage() {
               {loadingStaff ? "読み込み中..." : `登録職員数：${staffList.length}名`}
             </div>
             {isManager && (
-              <button className="btn-primary" onClick={() => { setShowStaffForm(!showStaffForm); setStaffForm({ ...EMPTY_STAFF, facility_id: session.selected_facility_id }); }}>
+              <button className="btn-primary" onClick={() => { setEditingStaffId(null); setStaffForm({ ...EMPTY_STAFF, facility_id: session.selected_facility_id }); setShowStaffForm(true); }}>
                 ＋ 職員追加
               </button>
             )}
@@ -419,7 +526,9 @@ export default function AdminPage() {
           {/* 職員追加フォーム */}
           {showStaffForm && isManager && (
             <div className="card" style={{ padding: 24, marginBottom: 20, border: "2px solid #0077b6" }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20, color: "#0077b6" }}>👥 職員追加</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20, color: "#0077b6" }}>
+                {editingStaffId ? "✏️ 職員情報を編集" : "👥 職員追加"}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div>
                   <label style={labelStyle}>氏名 *</label>
@@ -430,8 +539,13 @@ export default function AdminPage() {
                   <input className="form-input" placeholder="例: tanaka_m" value={staffForm.login_id} onChange={(e) => setStaffForm(p => ({ ...p, login_id: e.target.value }))} />
                 </div>
                 <div>
-                  <label style={labelStyle}>初期パスワード * <span style={{ color: "#94a3b8", fontWeight: 400 }}>（8文字以上）</span></label>
-                  <input className="form-input" type="password" placeholder="初期パスワードを設定" value={staffForm.password} onChange={(e) => setStaffForm(p => ({ ...p, password: e.target.value }))} />
+                  <label style={labelStyle}>
+                    {editingStaffId ? "パスワード変更（変更しない場合は空白）" : "初期パスワード * （8文字以上）"}
+                  </label>
+                  <input className="form-input" type="password"
+                    placeholder={editingStaffId ? "変更する場合のみ入力" : "初期パスワードを設定"}
+                    value={staffForm.password}
+                    onChange={(e) => setStaffForm(p => ({ ...p, password: e.target.value }))} />
                 </div>
                 <div>
                   <label style={labelStyle}>役割</label>
@@ -505,11 +619,11 @@ export default function AdminPage() {
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
                 <button className="btn-primary" onClick={handleSaveStaff}
-                  disabled={staffSaving || !staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id || !staffForm.password.trim()}
+                  disabled={staffSaving || !staffForm.name.trim() || !staffForm.login_id.trim() || !staffForm.facility_id || (!editingStaffId && !staffForm.password.trim())}
                   style={{ minWidth: 100 }}>
-                  {staffSaving ? "登録中..." : "✅ 登録する"}
+                  {staffSaving ? "保存中..." : editingStaffId ? "✅ 更新する" : "✅ 登録する"}
                 </button>
-                <button className="btn-secondary" onClick={() => { setShowStaffForm(false); setStaffError(""); }}>キャンセル</button>
+                <button className="btn-secondary" onClick={() => { setShowStaffForm(false); setEditingStaffId(null); setStaffError(""); }}>キャンセル</button>
               </div>
             </div>
           )}
@@ -525,6 +639,7 @@ export default function AdminPage() {
                   <th>所属施設</th>
                   <th>保有資格</th>
                   <th>入社日</th>
+                  {isManager && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -555,6 +670,20 @@ export default function AdminPage() {
                         </div>
                       </td>
                       <td style={{ fontSize: 12, color: "#64748b" }}>{s.hire_date ?? "—"}</td>
+                      {isManager && (
+                        <td>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => handleEditStaff(s)}
+                              style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6, border: "1.5px solid #0077b6", background: "white", color: "#0077b6", cursor: "pointer", fontWeight: 600 }}>
+                              編集
+                            </button>
+                            <button onClick={() => handleDeleteStaff(s.id, s.name)}
+                              style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6, border: "1.5px solid #ef4444", background: "white", color: "#ef4444", cursor: "pointer", fontWeight: 600 }}>
+                              削除
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
