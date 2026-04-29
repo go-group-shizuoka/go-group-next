@@ -2,11 +2,12 @@
 // ==================== サイドバー ====================
 // 施設切替 + ナビゲーション。スマホではボトムナビに切り替え。
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
-import type { UserSession } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { useSession } from "@/hooks/useSession";
 
 // ナビゲーションメニュー定義
 const NAV_ITEMS = [
@@ -27,29 +28,29 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  // useEffectでlocalStorageを読み込み（SSRとのHydrationエラーを防ぐ）
-  const [session, setSession] = useState<UserSession | null>(null);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("gg_session");
-      if (raw) setSession(JSON.parse(raw) as UserSession);
-    } catch {}
-  }, []);
+  const session = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // 施設切替
+  // 施設切替（UI設定のみlocalStorageに保存）
   const handleFacilityChange = (facilityId: string) => {
     if (!session) return;
-    const updated = { ...session, selected_facility_id: facilityId };
-    setSession(updated);
-    localStorage.setItem("gg_session", JSON.stringify(updated));
-    // ページをリロードしてデータを再取得
+    localStorage.setItem("gg_facility_id", facilityId);
+    try {
+      const cached = sessionStorage.getItem("gg_staff_cache");
+      if (cached) {
+        const data = JSON.parse(cached);
+        data.staff_session.selected_facility_id = facilityId;
+        sessionStorage.setItem("gg_staff_cache", JSON.stringify(data));
+      }
+    } catch {}
     window.location.reload();
   };
 
-  // ログアウト
-  const handleLogout = () => {
-    localStorage.removeItem("gg_session");
+  // ログアウト（Supabase Authから正式にサインアウト）
+  const handleLogout = async () => {
+    sessionStorage.removeItem("gg_staff_cache");
+    localStorage.removeItem("gg_facility_id");
+    await supabase.auth.signOut();
     router.push("/login");
   };
 
