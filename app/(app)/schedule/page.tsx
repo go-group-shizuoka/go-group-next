@@ -2,9 +2,10 @@
 // ==================== 生徒予定表 ====================
 // 月間カレンダーで各日の来所予定児童を確認する画面
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import type { UserSession, Child } from "@/types";
+import { fetchByFacility } from "@/lib/supabase";
+import type { Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { DOW as DOW_JP } from "@/lib/utils";
 
@@ -27,13 +28,21 @@ export default function SchedulePage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [selDay, setSelDay] = useState<number | null>(today.getDate());
+  const [dbChildren, setDbChildren] = useState<Child[]>([]);
+
+  useEffect(() => {
+    if (!session) return;
+    fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id).then((rows) => {
+      if (rows.length > 0) setDbChildren(rows.filter((c) => c.active));
+    });
+  }, [session]);
 
   if (!session) return null;
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
-  const children = DUMMY_CHILDREN.filter(
-    (c) => c.active && c.facility_id === session.selected_facility_id
-  );
+  const children = dbChildren.length > 0
+    ? dbChildren
+    : DUMMY_CHILDREN.filter((c) => c.active && c.facility_id === session.selected_facility_id);
 
   const { firstDay, daysInMonth } = buildCalendar(year, month);
 
