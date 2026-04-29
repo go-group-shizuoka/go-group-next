@@ -6,12 +6,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // Service Role Key（サーバーサイドのみ。クライアントには絶対公開しない）
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// ビルド時に環境変数がなくてもクラッシュしないようにリクエスト時に初期化する
+function getAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Supabase環境変数が設定されていません（NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）");
+  return createClient(url, key);
+}
 
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getAdmin();
   try {
     const { login_id, password, name, role, facility_id, org_id,
             phone, employment_type, qualifications, hire_date, emergency_contact } = await req.json();
