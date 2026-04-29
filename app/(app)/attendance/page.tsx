@@ -8,6 +8,7 @@ import type { UserSession, AttendanceRecord } from "@/types";
 // Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
 import { todayISO, nowHHMM, DOW } from "@/lib/utils";
+import { xlsBorder } from "@/lib/excel-style";
 
 function getTodayDow() {
   return DOW[new Date().getDay()];
@@ -70,7 +71,7 @@ export default function AttendancePage() {
   const exportExcel = async () => {
     const XLSXStyle = (await import("xlsx-js-style")).default;
 
-    const { xlsBorder: bd } = await import("@/lib/excel-style");
+    const bd = xlsBorder;
     const COLS = ["A","B","C","D","E","F","G"];
     const colWidths = [{ wch: 16 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }];
 

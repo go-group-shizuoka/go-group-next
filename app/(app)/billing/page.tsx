@@ -9,6 +9,7 @@ import type { AttendanceRecord, Child } from "@/types";
 // Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
 import { genMonths } from "@/lib/utils";
+import { xlsBorder } from "@/lib/excel-style";
 
 // 放課後等デイサービスの基本的な単価設定（簡易版）
 const DEFAULT_UNIT_PRICE = 10000; // 1回あたりの基本単価（円）
@@ -146,7 +147,7 @@ export default function BillingPage() {
   const exportExcel = async () => {
     const XLSXStyle = (await import("xlsx-js-style")).default;
 
-    const { xlsBorder: bd } = await import("@/lib/excel-style");
+    const bd = xlsBorder;
     // 12列分の列名
     const COLS = ["A","B","C","D","E","F","G","H","I","J","K","L"];
     const colWidths = [

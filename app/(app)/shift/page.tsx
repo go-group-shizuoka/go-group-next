@@ -9,6 +9,7 @@ import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
 import type { ShiftRecord, WorkLog } from "@/types";
 // Excel出力：xlsx-js-style（枠線・色付き、純粋JSなのでVercelでも動作）
 import { todayISO, nowHHMM, genMonths, DOW } from "@/lib/utils";
+import { xlsBorder, colName } from "@/lib/excel-style";
 
 type TabKey = "shift" | "worklog";
 
@@ -125,7 +126,7 @@ export default function ShiftPage() {
   const exportShiftExcel = async () => {
     // xlsx-js-styleを動的インポート（クライアント専用・純粋JS）
     const XLSXStyle = (await import("xlsx-js-style")).default;
-    const { xlsBorder: bd, colName } = await import("@/lib/excel-style");
+    const bd = xlsBorder;
 
     const totalCols = days.length + 2; // 氏名列 + 日付列 + 出勤日数列
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
