@@ -3,8 +3,10 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// ビルド時に環境変数が未設定でも初期化エラーが出ないようフォールバック値を使用
+// 実際のAPIコールはブラウザ側でのみ発生するため、Vercel上では本物の値が使われる
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
 
 // シングルトンパターン（ブラウザ側で1インスタンスのみ）
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
