@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByFacility } from "@/lib/supabase";
+import { saveRecord, fetchByFacility, fetchChildren } from "@/lib/supabase";
 import type { SupportPlan, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { todayISO } from "@/lib/utils";
@@ -51,7 +51,7 @@ export default function SupportPlanPage() {
     setLoadingDB(true);
     Promise.all([
       fetchByFacility<SupportPlan>("ng_support_plans", session.org_id, session.selected_facility_id),
-      fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id),
+      fetchChildren(session.org_id, session.selected_facility_id),
     ]).then(([planRows, childrenRows]) => {
       setPlans(planRows);
       if (childrenRows.length > 0) setDbChildren(childrenRows.filter((c) => c.active));

@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_FACILITIES, DUMMY_STAFF, DUMMY_CHILDREN } from "@/lib/dummy-data";
-import { saveRecord, fetchByOrg, deleteRecord } from "@/lib/supabase";
+import { saveRecord, fetchByOrg, deleteRecord, normalizeChild, toStringArray } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -12,9 +12,9 @@ type Tab = "facility" | "staff" | "children";
 
 // 保有資格の選択肢
 const QUALIFICATION_OPTIONS = [
-  "保育士", "児童発達支援管理責任者", "社会福祉士", "精神保健福祉士",
-  "公認心理師", "臨床心理士", "作業療法士", "理学療法士",
-  "言語聴覚士", "看護師", "介護福祉士",
+  "保育士", "児童指導員", "児童指導員（５年以上）", "児童発達支援管理責任者",
+  "社会福祉士", "精神保健福祉士", "公認心理師", "臨床心理士",
+  "作業療法士", "理学療法士", "言語聴覚士", "看護師", "介護福祉士",
 ];
 
 // 職員型
@@ -37,6 +37,12 @@ const EMPTY_STAFF = {
 };
 
 function genId() { return crypto.randomUUID(); }
+
+// 覚えやすい初期パスワードを生成（英小文字+数字 8文字）
+function genPassword(): string {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789"; // 紛らわしい文字を除外
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
 
 const EMPTY_CHILD = {
   name: "", name_kana: "", dob: "", grade: "", gender: "" as "" | "男" | "女",
@@ -70,19 +76,22 @@ export default function AdminPage() {
   const [staffSaving, setStaffSaving] = useState(false);
   const [staffSaved, setStaffSaved] = useState(false);
   const [staffError, setStaffError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  // 登録完了後に表示するログイン情報
+  const [registeredInfo, setRegisteredInfo] = useState<{ login_id: string; password: string } | null>(null);
 
   // Supabaseから児童・職員を読み込む
   useEffect(() => {
     if (!session) return;
-    // 児童読み込み
+    // 児童読み込み（use_days等のJSONBフィールドを正規化）
     fetchByOrg<Child>("ng_children", session.org_id).then((rows) => {
-      setChildren(rows.length > 0 ? rows : DUMMY_CHILDREN);
+      setChildren(rows.length > 0 ? rows.map(normalizeChild) : DUMMY_CHILDREN);
       setLoadingChildren(false);
     });
-    // 職員読み込み
+    // 職員読み込み（qualificationsのJSONBフィールドを正規化）
     fetchByOrg<StaffMember>("ng_staff", session.org_id).then((rows) => {
       if (rows.length > 0) {
-        setStaffList(rows);
+        setStaffList(rows.map((s) => ({ ...s, qualifications: toStringArray(s.qualifications) })));
       } else {
         setStaffList(DUMMY_STAFF.map((s) => ({
           id: s.id, org_id: s.org_id, facility_id: s.facility_id,
@@ -109,7 +118,22 @@ export default function AdminPage() {
     setStaffError("");
     try {
       if (editingStaffId) {
-        // ===== 編集モード：ng_staffテーブルのみ更新 =====
+        // ===== 編集モード =====
+        // パスワードが入力されていれば変更
+        if (staffForm.password.trim().length >= 8) {
+          const pwRes = await fetch("/api/admin/update-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login_id: staffForm.login_id.trim(), password: staffForm.password.trim() }),
+          });
+          const pwJson = await pwRes.json();
+          if (!pwRes.ok || pwJson.error) {
+            setStaffError(`パスワード変更エラー: ${pwJson.error}`);
+            setStaffSaving(false);
+            return;
+          }
+        }
+        // ng_staffテーブルを更新
         await saveRecord("ng_staff", {
           id: editingStaffId,
           org_id: session!.org_id,
@@ -149,7 +173,7 @@ export default function AdminPage() {
             org_id: session!.org_id,
             phone: staffForm.phone.trim() || null,
             employment_type: staffForm.employment_type || null,
-            qualifications: staffForm.qualifications.length > 0 ? JSON.stringify(staffForm.qualifications) : null,
+            qualifications: staffForm.qualifications.length > 0 ? staffForm.qualifications : null,
             hire_date: staffForm.hire_date || null,
             emergency_contact: staffForm.emergency_contact.trim() || null,
           }),
@@ -175,8 +199,11 @@ export default function AdminPage() {
           emergency_contact: staffForm.emergency_contact.trim() || undefined,
         };
         setStaffList((prev) => [newStaff, ...prev]);
+        // 新規登録時のみログイン情報カードを表示
+        setRegisteredInfo({ login_id: staffForm.login_id.trim(), password: staffForm.password.trim() });
       }
       setStaffForm({ ...EMPTY_STAFF });
+      setShowPassword(false);
       setShowStaffForm(false);
       setEditingStaffId(null);
       setStaffSaved(true);
@@ -472,7 +499,7 @@ export default function AdminPage() {
                       </td>
                       <td style={{ fontSize: 12 }}>{c.grade ?? "—"}</td>
                       <td style={{ fontSize: 12 }}>{c.diagnosis ?? "—"}</td>
-                      <td style={{ fontSize: 12 }}>{c.use_days?.join("・") || "—"}</td>
+                      <td style={{ fontSize: 12 }}>{Array.isArray(c.use_days) && c.use_days.length > 0 ? c.use_days.join("・") : "—"}</td>
                       <td style={{ fontSize: 12 }}>{fac?.name ?? "—"}</td>
                       <td>{c.has_transport ? <span className="badge badge-blue">🚌</span> : <span style={{ color: "#94a3b8", fontSize: 12 }}>—</span>}</td>
                       <td>
@@ -517,9 +544,35 @@ export default function AdminPage() {
             )}
           </div>
 
-          {staffSaved && (
-            <div style={{ background: "#dcfce7", border: "1px solid #86efac", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#166534", fontWeight: 600 }}>
-              ✅ 職員を登録しました。
+          {/* 登録完了後のログイン情報カード */}
+          {registeredInfo && (
+            <div style={{ background: "#eff6ff", border: "2px solid #3b82f6", borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: "#1d4ed8", marginBottom: 12 }}>
+                ✅ 登録完了！スタッフにこの情報を伝えてください
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ background: "white", borderRadius: 8, padding: "10px 14px", border: "1px solid #bfdbfe" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>ログインID</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#0a2540", letterSpacing: "0.05em" }}>
+                    {registeredInfo.login_id}
+                  </div>
+                </div>
+                <div style={{ background: "white", borderRadius: 8, padding: "10px 14px", border: "1px solid #bfdbfe" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>初期パスワード</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#0a2540", letterSpacing: "0.1em" }}>
+                    {registeredInfo.password}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 11, color: "#3b82f6" }}>
+                ※ ログインURL: https://go-group-new.com/login
+              </div>
+              <button
+                onClick={() => setRegisteredInfo(null)}
+                style={{ marginTop: 10, fontSize: 11, background: "none", border: "none", color: "#64748b", cursor: "pointer", textDecoration: "underline" }}
+              >
+                閉じる
+              </button>
             </div>
           )}
 
@@ -538,14 +591,51 @@ export default function AdminPage() {
                   <label style={labelStyle}>ログインID *</label>
                   <input className="form-input" placeholder="例: tanaka_m" value={staffForm.login_id} onChange={(e) => setStaffForm(p => ({ ...p, login_id: e.target.value }))} />
                 </div>
-                <div>
+                <div style={{ gridColumn: "1 / -1" }}>
                   <label style={labelStyle}>
-                    {editingStaffId ? "パスワード変更（変更しない場合は空白）" : "初期パスワード * （8文字以上）"}
+                    {editingStaffId ? "パスワード変更（変更しない場合は空白）" : "初期パスワード *（8文字以上）"}
                   </label>
-                  <input className="form-input" type="password"
-                    placeholder={editingStaffId ? "変更する場合のみ入力" : "初期パスワードを設定"}
-                    value={staffForm.password}
-                    onChange={(e) => setStaffForm(p => ({ ...p, password: e.target.value }))} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <input
+                        className="form-input"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={editingStaffId ? "変更する場合のみ入力" : "パスワードを入力または自動生成"}
+                        value={staffForm.password}
+                        onChange={(e) => setStaffForm(p => ({ ...p, password: e.target.value }))}
+                        style={{ paddingRight: 44 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(v => !v)}
+                        style={{
+                          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                          background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#64748b",
+                        }}
+                        title={showPassword ? "非表示" : "表示"}
+                      >
+                        {showPassword ? "🙈" : "👁️"}
+                      </button>
+                    </div>
+                    {!editingStaffId && (
+                      <button
+                        type="button"
+                        onClick={() => { const pw = genPassword(); setStaffForm(p => ({ ...p, password: pw })); setShowPassword(true); }}
+                        style={{
+                          padding: "10px 14px", background: "#f1f5f9", border: "1px solid #e2e8f0",
+                          borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#0077b6", cursor: "pointer",
+                          whiteSpace: "nowrap", fontFamily: "inherit",
+                        }}
+                      >
+                        🎲 自動生成
+                      </button>
+                    )}
+                  </div>
+                  {!editingStaffId && staffForm.password && (
+                    <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
+                      ※ 登録後にこのパスワードをスタッフに伝えてください
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>役割</label>

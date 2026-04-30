@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { fetchByFacility } from "@/lib/supabase";
+import { fetchChildren } from "@/lib/supabase";
 import type { Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { DOW as DOW_JP } from "@/lib/utils";
@@ -32,7 +32,7 @@ export default function SchedulePage() {
 
   useEffect(() => {
     if (!session) return;
-    fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id).then((rows) => {
+    fetchChildren(session.org_id, session.selected_facility_id).then((rows) => {
       if (rows.length > 0) setDbChildren(rows.filter((c) => c.active));
     });
   }, [session]);

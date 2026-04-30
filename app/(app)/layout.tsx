@@ -1,37 +1,62 @@
 "use client";
 // ==================== 認証済みエリアのレイアウト ====================
-// Supabase Authのトークンで認証チェック。未ログインはログインへリダイレクト。
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
+import { SessionProvider, useSession, useSessionLoading } from "@/contexts/session-context";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const session = useSession();
+  const loading = useSessionLoading();
 
   useEffect(() => {
-    // 初回: 現在のSupabase Authセッションを確認
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.replace("/login");
-      } else {
-        setReady(true);
-      }
-    });
+    // ローディング完了後、未ログインならloginへ
+    if (!loading && !session) {
+      router.replace("/login");
+    }
+  }, [loading, session, router]);
 
-    // 以降: 認証状態の変化を監視（トークン期限切れ・別タブでのログアウトに対応）
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        router.replace("/login");
-      }
-    });
+  // 読み込み中
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f0f6fa",
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            width: 48, height: 48,
+            border: "4px solid #e2e8f0",
+            borderTop: "4px solid #0077b6",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+            margin: "0 auto",
+          }} />
+          <div style={{ marginTop: 16, fontSize: 14, color: "#64748b" }}>読み込み中...</div>
+        </div>
+      </div>
+    );
+  }
 
-    return () => subscription.unsubscribe();
-  }, [router]);
-
-  if (!ready) return null;
+  // 未ログイン（useEffectでリダイレクト中）
+  if (!session) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f0f6fa",
+      }}>
+        <div style={{ fontSize: 14, color: "#64748b" }}>ログイン画面に移動中...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -43,5 +68,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
     </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <AppContent>{children}</AppContent>
+    </SessionProvider>
   );
 }

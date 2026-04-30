@@ -1,10 +1,11 @@
 "use client";
 // ==================== ログイン画面 ====================
-// Supabase Auth → ng_staff テーブルで職員情報取得 → セッション保存
+// Supabase Auth でログイン → ダッシュボードへリダイレクト
+// ng_staffの確認はSessionProvider側で行う
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { authSignIn, authSignOut, supabase } from "@/lib/supabase";
+import { authSignIn } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,32 +19,22 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    // ① Supabase Auth でログイン
-    const { error: authError } = await authSignIn(username, password);
+    try {
+      // Supabase Auth でログイン
+      const { error: authError } = await authSignIn(username, password);
 
-    if (authError) {
-      setError("ユーザーIDまたはパスワードが正しくありません");
+      if (authError) {
+        setError("ユーザーIDまたはパスワードが正しくありません");
+        setLoading(false);
+        return;
+      }
+
+      // 認証成功 → ダッシュボードへ（replaceでログイン画面を履歴から除去）
+      window.location.replace("/dashboard");
+    } catch {
+      setError("ログイン中にエラーが発生しました。再度お試しください。");
       setLoading(false);
-      return;
     }
-
-    // ② ng_staff テーブルで職員として登録されているか確認
-    const { data: staffRows, error: staffError } = await supabase
-      .from("ng_staff")
-      .select("id")
-      .eq("login_id", username)
-      .limit(1);
-
-    if (staffError || !staffRows || staffRows.length === 0) {
-      // ng_staffに未登録 → 不正アクセスとしてサインアウト
-      await authSignOut();
-      setError("このアカウントは職員として登録されていません。管理者にお問い合わせください。");
-      setLoading(false);
-      return;
-    }
-
-    // ③ 認証成功 → ダッシュボードへ（セッションはSupabase Authが管理）
-    router.push("/dashboard");
   };
 
   return (

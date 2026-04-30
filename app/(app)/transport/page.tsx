@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByDate, fetchByFacility } from "@/lib/supabase";
+import { saveRecord, fetchByDate, fetchChildren } from "@/lib/supabase";
 import type { Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { todayISO, nowHHMM, DOW } from "@/lib/utils";
@@ -54,7 +54,7 @@ export default function TransportPage() {
     setLoadingDB(true);
     Promise.all([
       fetchByDate<TransportDBRecord>("ng_transport", session.org_id, session.selected_facility_id, todayISO()),
-      fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id),
+      fetchChildren(session.org_id, session.selected_facility_id),
     ]).then(([rows, childrenRows]) => {
       const map: Record<string, TransportRecord> = {};
       for (const r of rows) {

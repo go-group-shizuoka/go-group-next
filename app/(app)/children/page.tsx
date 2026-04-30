@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { supabase } from "@/lib/supabase";
+import { supabase, normalizeChild } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -37,7 +37,7 @@ export default function ChildrenPage() {
         // DBにデータがなければダミーデータを使用
         setChildren(DUMMY_CHILDREN);
       } else {
-        setChildren(data as Child[]);
+        setChildren((data as Child[]).map(normalizeChild));
       }
       setLoading(false);
     };
@@ -296,7 +296,7 @@ function ChildCard({
       </div>
 
       {/* 利用曜日 */}
-      {child.use_days && child.use_days.length > 0 && (
+      {Array.isArray(child.use_days) && child.use_days.length > 0 && (
         <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap" }}>
           {["月","火","水","木","金"].map((d) => (
             <span
