@@ -230,7 +230,7 @@ export default function AdminPage() {
   const handleEditStaff = (staff: StaffMember) => {
     setStaffForm({
       name: staff.name,
-      login_id: staff.login_id,
+      login_id: getLoginId(staff),
       password: "", // パスワードは変更時のみ入力
       role: staff.role,
       facility_id: staff.facility_id,
