@@ -21,13 +21,20 @@ const QUALIFICATION_OPTIONS = [
 type StaffMember = {
   id: string; org_id: string; facility_id: string;
   name: string; role: "admin" | "manager" | "staff";
-  login_id: string; created_at: string;
+  login_id?: string; email?: string; created_at: string;
   phone?: string;
   employment_type?: string;
   qualifications?: string[];
   hire_date?: string;
   emergency_contact?: string;
 };
+
+// emailからlogin_idを取得（例: tanaka_m@go-group-sys.app → tanaka_m）
+function getLoginId(s: StaffMember): string {
+  if (s.login_id) return s.login_id;
+  if (s.email) return s.email.replace(/@go-group-sys\.app$/, "");
+  return s.id.slice(0, 8);
+}
 
 const EMPTY_STAFF = {
   name: "", role: "staff" as "admin" | "manager" | "staff",
@@ -741,7 +748,7 @@ export default function AdminPage() {
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
                         {s.phone && <div style={{ fontSize: 11, color: "#94a3b8" }}>{s.phone}</div>}
                       </td>
-                      <td style={{ fontSize: 12, color: "#64748b" }}>{s.login_id}</td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>{getLoginId(s)}</td>
                       <td>
                         <span className={`badge ${s.role === "admin" ? "badge-red" : s.role === "manager" ? "badge-blue" : "badge-green"}`}>
                           {s.role === "admin" ? "本部管理者" : s.role === "manager" ? "管理者" : "職員"}
