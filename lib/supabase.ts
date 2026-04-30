@@ -3,8 +3,11 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// ビルド時に環境変数が未設定でも初期化エラーが出ないようフォールバック値を使用
+// 実際のAPIコールはブラウザ側でのみ発生するため、Vercel上では本物の値が使われる
+// 空文字列の場合も考慮して || を使用（?? は空文字列をfalsyとして扱わないため）
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
 
 // シングルトンパターン（ブラウザ側で1インスタンスのみ）
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -137,6 +140,39 @@ export async function uploadPhoto(
   // 公開URLを取得
   const { data } = supabase.storage.from("photos").getPublicUrl(path);
   return data.publicUrl;
+}
+
+// ==================== JSONB正規化ユーティリティ ====================
+
+// SupabaseのJSONBカラムを安全にstring[]に変換（非配列値でのクラッシュを防ぐ）
+// {Count: N, value: [...]} 形式のレガシーデータにも対応
+export function toStringArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val.filter((v): v is string => typeof v === "string");
+  // C#/.NET形式 {Count, value:[...]} をサポート
+  if (val !== null && typeof val === "object") {
+    const obj = val as Record<string, unknown>;
+    if (Array.isArray(obj.value)) {
+      return obj.value.filter((v): v is string => typeof v === "string");
+    }
+  }
+  return [];
+}
+
+// ng_childrenのJSONBフィールド（use_days, qualifications）を正規化
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeChild<T extends Record<string, any>>(child: T): T {
+  return {
+    ...child,
+    use_days: toStringArray(child.use_days),
+    qualifications: toStringArray(child.qualifications),
+  };
+}
+
+// ng_children専用fetch（use_days等のJSONBフィールドを正規化）
+export async function fetchChildren(org_id: string, facility_id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = await fetchByFacility<any>("ng_children", org_id, facility_id);
+  return rows.map(normalizeChild);
 }
 
 // ==================== 認証 ====================

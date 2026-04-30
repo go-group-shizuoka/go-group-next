@@ -4,8 +4,8 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByFacility } from "@/lib/supabase";
-import type { UserSession, SupportPlan } from "@/types";
+import { saveRecord, fetchByFacility, fetchChildren } from "@/lib/supabase";
+import type { SupportPlan, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { todayISO } from "@/lib/utils";
 
@@ -37,6 +37,7 @@ function safeParseItems(s: string): SupportItem[] {
 export default function SupportPlanPage() {
   const session = useSession();
   const [plans, setPlans] = useState<SupportPlan[]>([]);
+  const [dbChildren, setDbChildren] = useState<Child[]>([]);
   const [loadingDB, setLoadingDB] = useState(false);
   const [view, setView] = useState<"list" | "edit">("list");
   const [selectedChild, setSelectedChild] = useState<string | null>(null);
@@ -44,16 +45,16 @@ export default function SupportPlanPage() {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
 
-  // Supabaseから個別支援計画を読み込む
+  // Supabaseから個別支援計画と児童リストを読み込む
   useEffect(() => {
     if (!session) return;
     setLoadingDB(true);
-    fetchByFacility<SupportPlan>(
-      "ng_support_plans",
-      session.org_id,
-      session.selected_facility_id
-    ).then((rows) => {
-      setPlans(rows);
+    Promise.all([
+      fetchByFacility<SupportPlan>("ng_support_plans", session.org_id, session.selected_facility_id),
+      fetchChildren(session.org_id, session.selected_facility_id),
+    ]).then(([planRows, childrenRows]) => {
+      setPlans(planRows);
+      if (childrenRows.length > 0) setDbChildren(childrenRows.filter((c) => c.active));
       setLoadingDB(false);
     });
   }, [session]);
@@ -68,14 +69,14 @@ export default function SupportPlanPage() {
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
   const todayDow = ["日","月","火","水","木","金","土"][new Date().getDay()];
 
-  // この施設の在籍児童
-  const facilityChildren = DUMMY_CHILDREN.filter(
-    (c) => c.active && c.facility_id === session.selected_facility_id
-  );
+  // この施設の在籍児童（Supabase優先、なければダミー）
+  const facilityChildren = dbChildren.length > 0
+    ? dbChildren
+    : DUMMY_CHILDREN.filter((c) => c.active && c.facility_id === session.selected_facility_id);
 
   // 計画を開く（既存 or 新規）
   const openPlan = (childId: string) => {
-    const child = DUMMY_CHILDREN.find((c) => c.id === childId)!;
+    const child = facilityChildren.find((c) => c.id === childId)!;
     const existing = plans.find((p) => p.child_id === childId);
     if (existing) {
       setEditPlan(existing);
@@ -168,7 +169,7 @@ export default function SupportPlanPage() {
 
   // ===== 編集画面 =====
   if (view === "edit" && editPlan) {
-    const selectedChildData = DUMMY_CHILDREN.find((c) => c.id === selectedChild);
+    const selectedChildData = facilityChildren.find((c) => c.id === selectedChild);
     const shortGoals: ShortGoal[] = safeParseGoals(editPlan.short_term_goals);
     const supportItems: SupportItem[] = safeParseItems(editPlan.support_items);
 

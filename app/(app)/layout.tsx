@@ -1,57 +1,80 @@
 "use client";
 // ==================== 認証済みエリアのレイアウト ====================
-// セッションを同期的にチェック → スピナーなしで即座に表示。
-// 未ログイン・期限切れはuseEffectでログインへリダイレクト。
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
-import { authSignOut } from "@/lib/supabase";
-import type { UserSession } from "@/types";
+import { SessionProvider, useSession, useSessionLoading } from "@/contexts/session-context";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-
-  // SSR時はfalse固定にしてHydrationエラーを防ぐ
-  // useEffectでマウント後にlocalStorageを確認する
-  const [ready, setReady] = useState(false);
+  const session = useSession();
+  const loading = useSessionLoading();
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("gg_session");
-      if (!raw) { router.replace("/login"); return; }
-      const session = JSON.parse(raw) as UserSession & { expires_at?: number };
-      if (session.expires_at && Date.now() > session.expires_at) {
-        localStorage.removeItem("gg_session");
-        authSignOut();
-        router.replace("/login");
-        return;
-      }
-      setReady(true);
-    } catch {
+    // ローディング完了後、未ログインならloginへ
+    if (!loading && !session) {
       router.replace("/login");
     }
-  }, [router]);
+  }, [loading, session, router]);
 
-  // 未認証の場合は何も表示しない（リダイレクト待ち）
-  if (!ready) return null;
+  // 読み込み中
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f0f6fa",
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            width: 48, height: 48,
+            border: "4px solid #e2e8f0",
+            borderTop: "4px solid #0077b6",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+            margin: "0 auto",
+          }} />
+          <div style={{ marginTop: 16, fontSize: 14, color: "#64748b" }}>読み込み中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // 未ログイン（useEffectでリダイレクト中）
+  if (!session) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f0f6fa",
+      }}>
+        <div style={{ fontSize: 14, color: "#64748b" }}>ログイン画面に移動中...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      {/* サイドバー（PC固定） */}
       <Sidebar />
-
-      {/* メインコンテンツ：PCはmargin-left:240px、スマホは0（globals.cssで制御） */}
       <main
-        style={{
-          padding: "20px 16px",
-          minHeight: "100vh",
-          paddingBottom: "80px",
-        }}
+        style={{ padding: "20px 16px", minHeight: "100vh", paddingBottom: "80px" }}
         className="main-content"
       >
         {children}
       </main>
     </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <AppContent>{children}</AppContent>
+    </SessionProvider>
   );
 }

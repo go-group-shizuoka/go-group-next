@@ -3,8 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByDate, uploadPhoto } from "@/lib/supabase";
-import type { UserSession, AttendanceRecord } from "@/types";
+import { saveRecord, fetchByDate, fetchChildren, uploadPhoto } from "@/lib/supabase";
+import type { AttendanceRecord, Child } from "@/types";
 // Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
 import { todayISO, nowHHMM, DOW } from "@/lib/utils";
@@ -24,17 +24,16 @@ export default function AttendancePage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dbChildren, setDbChildren] = useState<Child[]>([]);
 
-  // Supabaseから本日の入退室記録を読み込む
+  // Supabaseから本日の入退室記録と児童リストを読み込む
   useEffect(() => {
     if (!session) return;
     setLoadingDB(true);
-    fetchByDate<AttendanceRecord>(
-      "ng_attendance",
-      session.org_id,
-      session.selected_facility_id,
-      todayISO()
-    ).then((rows) => {
+    Promise.all([
+      fetchByDate<AttendanceRecord>("ng_attendance", session.org_id, session.selected_facility_id, todayISO()),
+      fetchChildren(session.org_id, session.selected_facility_id),
+    ]).then(([rows, childrenRows]) => {
       if (rows.length > 0) {
         const map: Record<string, { arrive?: string; depart?: string; temp?: string; photo_url?: string }> = {};
         rows.forEach((r) => {
@@ -47,6 +46,7 @@ export default function AttendancePage() {
         });
         setRecords(map);
       }
+      if (childrenRows.length > 0) setDbChildren(childrenRows.filter((c) => c.active));
       setLoadingDB(false);
     });
   }, [session]);
@@ -59,13 +59,11 @@ export default function AttendancePage() {
       <span className="spinner" />
     </div>
   );
-  const todayChildren = DUMMY_CHILDREN.filter(
-    (c) =>
-      c.active &&
-      c.facility_id === session.selected_facility_id &&
-      (c.use_days ?? []).includes(todayDow)
-  );
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
+  const allChildren = dbChildren.length > 0
+    ? dbChildren
+    : DUMMY_CHILDREN.filter((c) => c.active && c.facility_id === session.selected_facility_id);
+  const todayChildren = allChildren.filter((c) => (c.use_days ?? []).includes(todayDow));
 
   // Excel出力（xlsx-js-style：枠線・色付き）
   const exportExcel = async () => {
@@ -153,7 +151,7 @@ export default function AttendancePage() {
   };
 
   const handleArrive = async (childId: string) => {
-    const child = DUMMY_CHILDREN.find((c) => c.id === childId);
+    const child = allChildren.find((c) => c.id === childId);
     setUploading(true);
 
     // 写真アップロード
@@ -194,7 +192,7 @@ export default function AttendancePage() {
   };
 
   const handleDepart = (childId: string) => {
-    const child = DUMMY_CHILDREN.find((c) => c.id === childId);
+    const child = allChildren.find((c) => c.id === childId);
     const rec: Partial<AttendanceRecord> = {
       id: `${childId}_${todayISO()}`,
       org_id: session!.org_id,
@@ -233,7 +231,7 @@ export default function AttendancePage() {
 
       {/* 入力パネル（選択中） */}
       {selChild && (() => {
-        const child = DUMMY_CHILDREN.find((c) => c.id === selChild)!;
+        const child = allChildren.find((c) => c.id === selChild)!;
         const rec = records[selChild] ?? {};
         return (
           <div

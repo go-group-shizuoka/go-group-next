@@ -4,8 +4,8 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, fetchByDate } from "@/lib/supabase";
-import type { UserSession } from "@/types";
+import { saveRecord, fetchByDate, fetchChildren } from "@/lib/supabase";
+import type { Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { todayISO, nowHHMM, DOW } from "@/lib/utils";
 
@@ -46,20 +46,18 @@ export default function TransportPage() {
   const [selChild, setSelChild] = useState<string | null>(null);
   const [loadingDB, setLoadingDB] = useState(false);
   const [orderMode, setOrderMode] = useState(false);
+  const [dbChildren, setDbChildren] = useState<Child[]>([]);
 
-  // Supabaseから本日の送迎記録を読み込む
+  // Supabaseから本日の送迎記録と児童リストを読み込む
   useEffect(() => {
     if (!session) return;
     setLoadingDB(true);
-    fetchByDate<TransportDBRecord>(
-      "ng_transport",
-      session.org_id,
-      session.selected_facility_id,
-      todayISO()
-    ).then((rows) => {
+    Promise.all([
+      fetchByDate<TransportDBRecord>("ng_transport", session.org_id, session.selected_facility_id, todayISO()),
+      fetchChildren(session.org_id, session.selected_facility_id),
+    ]).then(([rows, childrenRows]) => {
       const map: Record<string, TransportRecord> = {};
       for (const r of rows) {
-        // route別に最新を使う（来所/帰所で別管理）
         const key = `${r.child_id}_${r.route}`;
         map[key] = {
           childId: r.child_id,
@@ -69,8 +67,8 @@ export default function TransportPage() {
           pickupOrder: r.pickup_order ?? 0,
         };
       }
-      // 現在のroute分をrecordsに統合
       setRecords(map);
+      if (childrenRows.length > 0) setDbChildren(childrenRows.filter((c) => c.active));
       setLoadingDB(false);
     });
   }, [session]);
@@ -80,9 +78,12 @@ export default function TransportPage() {
   const todayDow = getTodayDow();
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
 
+  const allChildren = dbChildren.length > 0
+    ? dbChildren
+    : DUMMY_CHILDREN.filter((c) => c.active && c.facility_id === session.selected_facility_id);
   // 本日の送迎対象児童
-  const transportChildren = DUMMY_CHILDREN.filter(
-    (c) => c.active && c.facility_id === session.selected_facility_id && c.has_transport && (c.use_days ?? []).includes(todayDow)
+  const transportChildren = allChildren.filter(
+    (c) => c.has_transport && (c.use_days ?? []).includes(todayDow)
   );
 
   const getRecord = (childId: string): TransportRecord => {
@@ -104,7 +105,7 @@ export default function TransportPage() {
     setRecords((prev) => ({ ...prev, [key]: newRec }));
 
     // Supabaseに保存
-    const child = DUMMY_CHILDREN.find((c) => c.id === childId);
+    const child = allChildren.find((c) => c.id === childId);
     await saveRecord("ng_transport", {
       id: `${childId}_${todayISO()}_${route}`,
       org_id: session.org_id,
@@ -129,7 +130,7 @@ export default function TransportPage() {
     const newRec: TransportRecord = { ...(existing ?? { childId, route, status: "待機中", pickupOrder: 0 }), pickupOrder: order };
     setRecords((prev) => ({ ...prev, [key]: newRec }));
 
-    const child = DUMMY_CHILDREN.find((c) => c.id === childId);
+    const child = allChildren.find((c) => c.id === childId);
     await saveRecord("ng_transport", {
       id: `${childId}_${todayISO()}_${route}`,
       org_id: session.org_id,
@@ -221,7 +222,7 @@ export default function TransportPage() {
 
       {/* 操作パネル（選択中の場合） */}
       {selChild && !orderMode && (() => {
-        const child = DUMMY_CHILDREN.find((c) => c.id === selChild)!;
+        const child = allChildren.find((c) => c.id === selChild)!;
         const rec = getRecord(selChild);
         return (
           <div className="card" style={{ padding: 20, marginBottom: 16, border: "2px solid #0077b6" }}>

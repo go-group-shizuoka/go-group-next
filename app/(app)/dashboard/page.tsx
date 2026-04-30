@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_FACILITIES, DUMMY_CHILDREN } from "@/lib/dummy-data";
-import { fetchByDate, fetchByFacility } from "@/lib/supabase";
+import { fetchByDate, fetchChildren } from "@/lib/supabase";
 import type { UserSession, AttendanceRecord, ActivityRecord, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { todayISO, DOW } from "@/lib/utils";
@@ -33,7 +33,7 @@ export default function DashboardPage() {
     Promise.all([
       fetchByDate<AttendanceRecord>("ng_attendance", session.org_id, session.selected_facility_id, todayISO()),
       fetchByDate<ActivityRecord>("ng_activities", session.org_id, session.selected_facility_id, todayISO()),
-      fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id),
+      fetchChildren(session.org_id, session.selected_facility_id),
     ]).then(([att, act, children]) => {
       setAttendance(att);
       setActivities(act);

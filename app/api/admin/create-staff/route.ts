@@ -26,33 +26,42 @@ export async function POST(req: NextRequest) {
 
     const email = `${login_id}@go-group-sys.app`;
 
-    // ① Supabase Authにユーザーを作成
+    // ① Supabase Authにユーザーを作成（既存ならスキップ）
+    let authUserId: string | null = null;
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // メール確認不要で即利用可能
+      email_confirm: true,
     });
 
     if (authError) {
-      // すでに存在する場合は既存UUIDを取得
       if (authError.message.includes("already been registered") || authError.message.includes("already exists")) {
-        const { data: existing } = await supabaseAdmin
-          .from("auth.users")
-          .select("id")
-          .eq("email", email)
-          .limit(1);
-        // ユーザーは既存として続行
+        // 既存ユーザーのUUIDをlistUsersから取得
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+        const existing = listData?.users?.find((u) => u.email === email);
+        authUserId = existing?.id ?? null;
       } else {
         return NextResponse.json({ error: authError.message }, { status: 400 });
       }
+    } else {
+      authUserId = authData?.user?.id ?? null;
     }
 
-    const authUserId = authData?.user?.id ?? crypto.randomUUID();
+    // ② ng_staffテーブルに登録（login_idで重複チェック後insert）
+    // まず同じlogin_idが既にあるか確認
+    const { data: existingStaff } = await supabaseAdmin
+      .from("ng_staff")
+      .select("id")
+      .eq("login_id", login_id)
+      .limit(1);
 
-    // ② ng_staffテーブルに登録
+    if (existingStaff && existingStaff.length > 0) {
+      return NextResponse.json({ error: `ログインID「${login_id}」は既に使用されています` }, { status: 400 });
+    }
+
     const { error: staffError } = await supabaseAdmin
       .from("ng_staff")
-      .upsert({
+      .insert({
         id: crypto.randomUUID(),
         org_id: org_id ?? "org_1",
         facility_id,
@@ -66,7 +75,7 @@ export async function POST(req: NextRequest) {
         hire_date: hire_date ?? null,
         emergency_contact: emergency_contact ?? null,
         created_at: new Date().toISOString(),
-      }, { onConflict: "login_id" });
+      });
 
     if (staffError) {
       return NextResponse.json({ error: staffError.message }, { status: 500 });

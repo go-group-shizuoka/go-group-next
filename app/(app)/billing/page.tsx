@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { fetchByFacility, saveRecord } from "@/lib/supabase";
+import { fetchByFacility, saveRecord, fetchChildren } from "@/lib/supabase";
 import type { AttendanceRecord, Child } from "@/types";
 // Excel出力：xlsx-js-style（純粋JS・Vercel対応）
 import { useSession } from "@/hooks/useSession";
@@ -59,7 +59,7 @@ export default function BillingPage() {
     setSavedMsg("");
     Promise.all([
       fetchByFacility<AttendanceRecord>("ng_attendance", session.org_id, session.selected_facility_id),
-      fetchByFacility<Child>("ng_children", session.org_id, session.selected_facility_id),
+      fetchChildren(session.org_id, session.selected_facility_id),
     ]).then(([att, children]) => {
       setAttendance(att);
       if (children.length > 0) setDbChildren(children.filter((c) => c.active));

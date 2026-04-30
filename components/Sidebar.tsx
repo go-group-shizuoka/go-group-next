@@ -2,16 +2,18 @@
 // ==================== サイドバー ====================
 // 施設切替 + ナビゲーション。スマホではボトムナビに切り替え。
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { DUMMY_FACILITIES } from "@/lib/dummy-data";
-import type { UserSession } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { useSession, useSetSelectedFacility } from "@/contexts/session-context";
 
 // ナビゲーションメニュー定義
 const NAV_ITEMS = [
   { href: "/dashboard",    icon: "🏠", label: "ダッシュボード", roles: ["admin","manager","staff"] },
   { href: "/children",     icon: "👦", label: "児童一覧",       roles: ["admin","manager","staff"] },
+  { href: "/reservations", icon: "📅", label: "予約管理",       roles: ["admin","manager","staff"] },
   { href: "/attendance",   icon: "📋", label: "入退室記録",     roles: ["admin","manager","staff"] },
   { href: "/activities",   icon: "📸", label: "活動記録",       roles: ["admin","manager","staff"] },
   { href: "/messages",     icon: "💬", label: "保護者連絡",     roles: ["admin","manager","staff"] },
@@ -27,29 +29,22 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  // useEffectでlocalStorageを読み込み（SSRとのHydrationエラーを防ぐ）
-  const [session, setSession] = useState<UserSession | null>(null);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("gg_session");
-      if (raw) setSession(JSON.parse(raw) as UserSession);
-    } catch {}
-  }, []);
+  const session = useSession();
+  const setSelectedFacility = useSetSelectedFacility();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // 施設切替
+  // 施設切替（Contextを更新→リロード不要）
   const handleFacilityChange = (facilityId: string) => {
     if (!session) return;
-    const updated = { ...session, selected_facility_id: facilityId };
-    setSession(updated);
-    localStorage.setItem("gg_session", JSON.stringify(updated));
-    // ページをリロードしてデータを再取得
+    setSelectedFacility(facilityId);
     window.location.reload();
   };
 
-  // ログアウト
-  const handleLogout = () => {
-    localStorage.removeItem("gg_session");
+  // ログアウト（Supabase Authから正式にサインアウト）
+  const handleLogout = async () => {
+    sessionStorage.removeItem("gg_staff_cache");
+    localStorage.removeItem("gg_facility_id");
+    await supabase.auth.signOut();
     router.push("/login");
   };
 
@@ -81,7 +76,6 @@ export default function Sidebar() {
           left: 0,
           zIndex: 50,
           overflowY: "hidden",
-          display: "flex",
         }}
         className="hidden md:flex"
       >
@@ -234,7 +228,7 @@ export default function Sidebar() {
 
       {/* ===================== スマホ用ボトムナビ ===================== */}
       <div
-        className="md:hidden"
+        className="flex md:hidden"
         style={{
           position: "fixed",
           bottom: 0,
@@ -243,7 +237,6 @@ export default function Sidebar() {
           zIndex: 50,
           background: "var(--sb-bg)",
           borderTop: "1px solid rgba(255,255,255,0.1)",
-          display: "flex",
           justifyContent: "space-around",
           padding: "6px 0 env(safe-area-inset-bottom)",
         }}
@@ -318,11 +311,43 @@ export default function Sidebar() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ color: "white", fontWeight: 800, fontSize: 16, marginBottom: 8 }}>
+            <div style={{ color: "white", fontWeight: 800, fontSize: 16, marginBottom: 4 }}>
               GO GROUP
             </div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
-              {session?.name} ({selectedFacility?.name})
+            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 12 }}>
+              {session?.name}
+            </div>
+            {/* 施設切替（スマホ用） */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 10, color: "#475569", fontWeight: 700, letterSpacing: "0.1em", marginBottom: 6 }}>
+                現在の施設
+              </div>
+              <select
+                value={session?.selected_facility_id ?? ""}
+                onChange={(e) => { setMobileOpen(false); handleFacilityChange(e.target.value); }}
+                style={{
+                  width: "100%",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  color: "white",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                {session?.role === "admin" && (
+                  <option value="" style={{ background: "#0a2540" }}>全施設</option>
+                )}
+                {facilities.map((f) => (
+                  <option key={f.id} value={f.id} style={{ background: "#0a2540" }}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
             </div>
             {visibleNav.map((item) => (
               <Link
