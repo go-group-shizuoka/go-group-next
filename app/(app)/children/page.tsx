@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { supabase, normalizeChild } from "@/lib/supabase";
+import { supabase, normalizeChild, isSupabaseReady } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -27,17 +27,25 @@ export default function ChildrenPage() {
     if (!session) return;
     const load = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("ng_children")
-        .select("*")
-        .eq("org_id", session.org_id)
-        .eq("active", true)
-        .order("name");
-      if (error || !data || data.length === 0) {
-        // DBにデータがなければダミーデータを使用
+      if (!isSupabaseReady) {
         setChildren(DUMMY_CHILDREN);
-      } else {
-        setChildren((data as Child[]).map(normalizeChild));
+        setLoading(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("ng_children")
+          .select("*")
+          .eq("org_id", session.org_id)
+          .eq("active", true)
+          .order("name");
+        if (error || !data || data.length === 0) {
+          setChildren(DUMMY_CHILDREN);
+        } else {
+          setChildren((data as Child[]).map(normalizeChild));
+        }
+      } catch {
+        setChildren(DUMMY_CHILDREN);
       }
       setLoading(false);
     };

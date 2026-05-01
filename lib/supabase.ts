@@ -12,21 +12,24 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholde
 // シングルトンパターン（ブラウザ側で1インスタンスのみ）
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 環境変数が未設定（プレースホルダー）の場合は false
+export const isSupabaseReady =
+  !supabaseUrl.includes("placeholder") && !supabaseAnonKey.includes("placeholder");
+
 // ==================== 汎用CRUD関数 ====================
 
 // データ取得（org_idでフィルタ）
 export async function fetchByOrg<T>(table: string, org_id: string): Promise<T[]> {
-  const { data, error } = await supabase
-    .from(table)
-    .select("*")
-    .eq("org_id", org_id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(`fetchByOrg [${table}] error:`, error);
-    return [];
-  }
-  return (data as T[]) ?? [];
+  if (!isSupabaseReady) return [];
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("org_id", org_id)
+      .order("created_at", { ascending: false });
+    if (error) { console.error(`fetchByOrg [${table}] error:`, error); return []; }
+    return (data as T[]) ?? [];
+  } catch { return []; }
 }
 
 // データ取得（org_id + facility_idでフィルタ）
@@ -35,18 +38,17 @@ export async function fetchByFacility<T>(
   org_id: string,
   facility_id: string
 ): Promise<T[]> {
-  const { data, error } = await supabase
-    .from(table)
-    .select("*")
-    .eq("org_id", org_id)
-    .eq("facility_id", facility_id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(`fetchByFacility [${table}] error:`, error);
-    return [];
-  }
-  return (data as T[]) ?? [];
+  if (!isSupabaseReady) return [];
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("org_id", org_id)
+      .eq("facility_id", facility_id)
+      .order("created_at", { ascending: false });
+    if (error) { console.error(`fetchByFacility [${table}] error:`, error); return []; }
+    return (data as T[]) ?? [];
+  } catch { return []; }
 }
 
 // データ取得（org_id + facility_id + 日付でフィルタ）
@@ -56,31 +58,29 @@ export async function fetchByDate<T>(
   facility_id: string,
   date: string
 ): Promise<T[]> {
-  const { data, error } = await supabase
-    .from(table)
-    .select("*")
-    .eq("org_id", org_id)
-    .eq("facility_id", facility_id)
-    .eq("date", date)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(`fetchByDate [${table}] error:`, error);
-    return [];
-  }
-  return (data as T[]) ?? [];
+  if (!isSupabaseReady) return [];
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("org_id", org_id)
+      .eq("facility_id", facility_id)
+      .eq("date", date)
+      .order("created_at", { ascending: false });
+    if (error) { console.error(`fetchByDate [${table}] error:`, error); return []; }
+    return (data as T[]) ?? [];
+  } catch { return []; }
 }
 
 // データ保存（upsert）
 export async function saveRecord(table: string, data: Record<string, unknown>) {
-  const { error } = await supabase
-    .from(table)
-    .upsert(data, { onConflict: "id" });
-
-  if (error) {
-    console.error(`saveRecord [${table}] error:`, error);
-    throw error;
-  }
+  if (!isSupabaseReady) return;
+  try {
+    const { error } = await supabase
+      .from(table)
+      .upsert(data, { onConflict: "id" });
+    if (error) { console.error(`saveRecord [${table}] error:`, error); throw error; }
+  } catch (e) { throw e; }
 }
 
 // データ取得（org_id + facility_id + 追加フィルタ）
@@ -90,34 +90,33 @@ export async function fetchByFacilityWhere<T>(
   facility_id: string,
   extra: Record<string, unknown>
 ): Promise<T[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let q: any = supabase
-    .from(table)
-    .select("*")
-    .eq("org_id", org_id)
-    .eq("facility_id", facility_id);
-  for (const [k, v] of Object.entries(extra)) {
-    q = q.eq(k, v);
-  }
-  const { data, error } = await q;
-  if (error) {
-    console.error(`fetchByFacilityWhere [${table}] error:`, error);
-    return [];
-  }
-  return (data as T[]) ?? [];
+  if (!isSupabaseReady) return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = supabase
+      .from(table)
+      .select("*")
+      .eq("org_id", org_id)
+      .eq("facility_id", facility_id);
+    for (const [k, v] of Object.entries(extra)) {
+      q = q.eq(k, v);
+    }
+    const { data, error } = await q;
+    if (error) { console.error(`fetchByFacilityWhere [${table}] error:`, error); return []; }
+    return (data as T[]) ?? [];
+  } catch { return []; }
 }
 
 // データ削除
 export async function deleteRecord(table: string, id: string) {
-  const { error } = await supabase
-    .from(table)
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error(`deleteRecord [${table}] error:`, error);
-    throw error;
-  }
+  if (!isSupabaseReady) return;
+  try {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq("id", id);
+    if (error) { console.error(`deleteRecord [${table}] error:`, error); throw error; }
+  } catch (e) { throw e; }
 }
 
 // ==================== 写真アップロード ====================

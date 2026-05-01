@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, supabase } from "@/lib/supabase";
+import { saveRecord, supabase, normalizeChild, isSupabaseReady } from "@/lib/supabase";
 import type { Child, AttendanceRecord } from "@/types";
 
 type TabKey = "basic" | "parent" | "notes" | "support" | "history";
@@ -29,10 +29,9 @@ export default function ChildDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [savingMsg, setSavingMsg] = useState("");
 
-  // ローカル編集用state（ダミーデータから初期値）
   const id = params.id as string;
-  const originalChild = DUMMY_CHILDREN.find((c) => c.id === id);
   const [editChild, setEditChild] = useState<Child | null>(null);
+  const [childLoading, setChildLoading] = useState(true);
 
   // 利用履歴用state
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -40,7 +39,23 @@ export default function ChildDetailPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
-    if (originalChild) setEditChild({ ...originalChild });
+    setChildLoading(true);
+    const dummy = DUMMY_CHILDREN.find((c) => c.id === id);
+    if (dummy) {
+      setEditChild({ ...dummy });
+      setChildLoading(false);
+      return;
+    }
+    if (!isSupabaseReady) {
+      setChildLoading(false);
+      return;
+    }
+    supabase.from("ng_children").select("*").eq("id", id).single()
+      .then(({ data }) => {
+        if (data) setEditChild(normalizeChild(data as Child));
+        setChildLoading(false);
+      })
+      .catch(() => setChildLoading(false));
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 利用履歴をSupabaseから取得
@@ -60,8 +75,16 @@ export default function ChildDetailPage() {
       });
   }, [id, tab, historyMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const child = editChild ?? originalChild;
+  const child = editChild;
   const fac = child ? DUMMY_FACILITIES.find((f) => f.id === child.facility_id) : undefined;
+
+  if (childLoading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+        <span className="spinner" />
+      </div>
+    );
+  }
 
   if (!child || !editChild) {
     return (
@@ -94,7 +117,7 @@ export default function ChildDetailPage() {
 
   // 編集キャンセル
   const handleCancel = () => {
-    setEditChild({ ...originalChild! });
+    if (child) setEditChild({ ...child });
     setIsEditing(false);
   };
 

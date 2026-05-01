@@ -1,9 +1,9 @@
 "use client";
-// ==================== セッションContext（シンプル版）====================
-// getSession()一回だけ呼び出し。複雑な処理を排除。
+// ==================== セッションContext ====================
+// Supabase Auth セッション優先、なければ localStorage の gg_session を使用
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseReady } from "@/lib/supabase";
 import type { UserSession } from "@/types";
 
 type SessionCtx = {
@@ -18,27 +18,52 @@ const SessionContext = createContext<SessionCtx>({
   setSelectedFacility: () => {},
 });
 
+function readLocalSession(): UserSession | null {
+  try {
+    const raw = localStorage.getItem("gg_session");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as UserSession & { expires_at?: number };
+    if (parsed.expires_at && Date.now() > parsed.expires_at) {
+      localStorage.removeItem("gg_session");
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadSession = useCallback(async () => {
     try {
-      // Supabase Authセッション取得
-      const { data: { session: authSession } } = await supabase.auth.getSession();
+      let authSession = null;
+      if (isSupabaseReady) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          authSession = data.session;
+        } catch {
+          // ネットワークエラー → localStorage にフォールバック
+        }
+      }
 
       if (!authSession) {
-        setSession(null);
+        // Supabase Auth セッションなし → localStorage の gg_session を確認
+        const local = readLocalSession();
+        setSession(local);
         setLoading(false);
         return;
       }
 
-      // ng_staffからスタッフ情報を取得
-      const username = authSession.user.email?.split("@")[0] ?? "";
+      // ng_staffからスタッフ情報を取得（email列で検索）
+      const email = authSession.user.email ?? "";
+      const username = email.split("@")[0];
       const { data: rows } = await supabase
         .from("ng_staff")
         .select("*")
-        .eq("login_id", username)
+        .eq("email", email)
         .limit(1);
 
       const staff = rows?.[0] ?? null;
@@ -54,11 +79,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         selected_facility_id: savedFacility ?? staff?.facility_id ?? "f1",
       };
 
+      // 旧 hooks/useSession（localStorage）を使うページのために書き込む
+      try { localStorage.setItem("gg_session", JSON.stringify(userSession)); } catch {}
+
       setSession(userSession);
       setLoading(false);
     } catch (err) {
       console.error("[SessionProvider] error:", err);
-      setSession(null);
+      // エラー時も localStorage を確認
+      const local = readLocalSession();
+      setSession(local);
       setLoading(false);
     }
   }, []);
@@ -66,11 +96,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadSession();
 
-    // ログアウト時のみ対応（SIGNED_INはloadSessionが処理済みのため不要）
+    if (!isSupabaseReady) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
+        localStorage.removeItem("gg_session");
         setSession(null);
         setLoading(false);
+      } else if (event === "SIGNED_IN") {
+        loadSession();
       }
     });
 
@@ -79,7 +112,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setSelectedFacility = useCallback((facilityId: string) => {
     try { localStorage.setItem("gg_facility_id", facilityId); } catch {}
-    setSession((prev) => (prev ? { ...prev, selected_facility_id: facilityId } : prev));
+    setSession((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, selected_facility_id: facilityId };
+      try { localStorage.setItem("gg_session", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
   }, []);
 
   return (
@@ -97,7 +135,6 @@ export function useSessionLoading(): boolean {
   return useContext(SessionContext).loading;
 }
 
-// 後方互換性のため維持
 export function useSessionError(): string | null {
   return null;
 }

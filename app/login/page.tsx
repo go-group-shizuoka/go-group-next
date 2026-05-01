@@ -1,11 +1,17 @@
 "use client";
 // ==================== ログイン画面 ====================
-// Supabase Auth でログイン → ダッシュボードへリダイレクト
-// ng_staffの確認はSessionProvider側で行う
+// 1. DUMMY_ACCOUNTS で照合（デモ用・環境変数未設定でも動作）
+// 2. マッチしなければ Supabase Auth でログイン
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DUMMY_ACCOUNTS } from "@/lib/dummy-data";
 import { authSignIn } from "@/lib/supabase";
+import type { UserSession } from "@/types";
+
+function saveSession(session: UserSession) {
+  try { localStorage.setItem("gg_session", JSON.stringify(session)); } catch {}
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,20 +25,40 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    try {
-      // Supabase Auth でログイン
-      const { error: authError } = await authSignIn(username, password);
+    const trimUser = username.trim();
+    const trimPass = password.trim();
 
+    // ① ダミーアカウント照合（環境変数未設定・開発用）
+    const dummy = DUMMY_ACCOUNTS.find(
+      (a) => a.username === trimUser && a.password === trimPass
+    );
+    if (dummy) {
+      const session: UserSession = {
+        id: dummy.staff_id ?? trimUser,
+        org_id: "org_1",
+        facility_id: dummy.facility_id ?? "f1",
+        staff_id: dummy.staff_id ?? trimUser,
+        name: dummy.name,
+        role: dummy.role,
+        selected_facility_id: dummy.facility_id ?? "f1",
+      };
+      saveSession(session);
+      router.replace("/dashboard");
+      return;
+    }
+
+    // ② Supabase Auth でログイン
+    try {
+      const { error: authError } = await authSignIn(trimUser, trimPass);
       if (authError) {
         setError("ユーザーIDまたはパスワードが正しくありません");
         setLoading(false);
         return;
       }
-
-      // 認証成功 → ダッシュボードへ（replaceでログイン画面を履歴から除去）
-      window.location.replace("/dashboard");
+      // セッションは session-context.tsx が自動的に localStorage へ書き込む
+      router.replace("/dashboard");
     } catch {
-      setError("ログイン中にエラーが発生しました。再度お試しください。");
+      setError("ユーザーIDまたはパスワードが正しくありません");
       setLoading(false);
     }
   };
