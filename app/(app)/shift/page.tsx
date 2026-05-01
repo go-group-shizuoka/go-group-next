@@ -57,7 +57,7 @@ export default function ShiftPage() {
   useEffect(() => {
     if (!session) return;
     Promise.all([
-      fetchByFacility<ShiftRecord>("ng_shift", session.org_id, session.selected_facility_id),
+      fetchByFacility<ShiftRecord>("ng_shifts", session.org_id, session.selected_facility_id),
       fetchByFacility<WorkLog>("ng_work_log", session.org_id, session.selected_facility_id),
     ]).then(([s, w]) => {
       setShifts(s);
@@ -99,7 +99,7 @@ export default function ShiftPage() {
           const staff_id = parts[0];
           const day = Number(parts[3]);
           const staff = staffList.find((s) => s.id === staff_id);
-          return saveRecord("ng_shift", {
+          return saveRecord("ng_shifts", {
             id: `${session.selected_facility_id}_${selYear}_${selMonth}_${staff_id}_${day}`,
             org_id: session.org_id,
             facility_id: session.selected_facility_id,

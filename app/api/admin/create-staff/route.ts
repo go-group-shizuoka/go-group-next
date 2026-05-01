@@ -15,8 +15,8 @@ function getAdmin() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabaseAdmin = getAdmin();
   try {
+    const supabaseAdmin = getAdmin();
     const { login_id, password, name, role, facility_id, org_id,
             phone, employment_type, qualifications, hire_date, emergency_contact } = await req.json();
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         auth_user_id: authUserId,
         phone: phone ?? null,
         employment_type: employment_type ?? null,
-        qualifications: qualifications ?? null,
+        qualifications: qualifications && qualifications.length > 0 ? qualifications : null,
         hire_date: hire_date ?? null,
         emergency_contact: emergency_contact ?? null,
         created_at: new Date().toISOString(),

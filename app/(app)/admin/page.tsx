@@ -52,7 +52,7 @@ const EMPTY_CHILD = {
 };
 
 const DOW_OPTIONS = ["月", "火", "水", "木", "金", "土"];
-const GRADE_OPTIONS = ["未就学", "年少", "年中", "年長", "小1", "小2", "小3", "小4", "小5", "小6", "中1", "中2", "中3"];
+const GRADE_OPTIONS = ["未就学", "年少", "年中", "年長", "小1", "小2", "小3", "小4", "小5", "小6", "中1", "中2", "中3", "高1", "高2", "高3"];
 
 const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 };
 
@@ -66,6 +66,7 @@ export default function AdminPage() {
   const [form, setForm] = useState({ ...EMPTY_CHILD });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [childError, setChildError] = useState("");
 
   // 職員管理用state
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -140,7 +141,7 @@ export default function AdminPage() {
           facility_id: staffForm.facility_id,
           name: staffForm.name.trim(),
           role: staffForm.role,
-          login_id: staffForm.login_id.trim(),
+          email: `${staffForm.login_id.trim()}@go-group-sys.app`,
           phone: staffForm.phone.trim() || null,
           employment_type: staffForm.employment_type || null,
           qualifications: staffForm.qualifications.length > 0 ? staffForm.qualifications : null,
@@ -250,37 +251,42 @@ export default function AdminPage() {
   const handleSaveChild = async () => {
     if (!form.name.trim() || !form.dob || !form.facility_id) return;
     setSaving(true);
-    const child: Child = {
-      id: editingChildId ?? genId(),
-      org_id: session.org_id,
-      facility_id: form.facility_id || session.selected_facility_id,
-      name: form.name,
-      name_kana: form.name_kana || undefined,
-      dob: form.dob,
-      grade: form.grade || undefined,
-      gender: (form.gender as "男" | "女") || undefined,
-      diagnosis: form.diagnosis || undefined,
-      use_days: form.use_days,
-      has_transport: form.has_transport,
-      parent_name: form.parent_name || undefined,
-      parent_phone: form.parent_phone || undefined,
-      notes: form.notes || undefined,
-      support_content: form.support_content || undefined,
-      active: true,
-      created_at: new Date().toISOString(),
-    };
-    await saveRecord("ng_children", child as unknown as Record<string, unknown>);
-    if (editingChildId) {
-      setChildren((prev) => prev.map((c) => c.id === editingChildId ? child : c));
-    } else {
-      setChildren((prev) => [child, ...prev]);
+    setChildError("");
+    try {
+      const child: Child = {
+        id: editingChildId ?? genId(),
+        org_id: session.org_id,
+        facility_id: form.facility_id || session.selected_facility_id,
+        name: form.name,
+        name_kana: form.name_kana || undefined,
+        dob: form.dob,
+        grade: form.grade || undefined,
+        gender: (form.gender as "男" | "女") || undefined,
+        diagnosis: form.diagnosis || undefined,
+        use_days: form.use_days,
+        has_transport: form.has_transport,
+        parent_name: form.parent_name || undefined,
+        parent_phone: form.parent_phone || undefined,
+        notes: form.notes || undefined,
+        support_content: form.support_content || undefined,
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+      await saveRecord("ng_children", child as unknown as Record<string, unknown>);
+      if (editingChildId) {
+        setChildren((prev) => prev.map((c) => c.id === editingChildId ? child : c));
+      } else {
+        setChildren((prev) => [child, ...prev]);
+      }
+      setForm({ ...EMPTY_CHILD });
+      setShowChildForm(false);
+      setEditingChildId(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      setChildError(`保存に失敗しました: ${String(e)}`);
     }
-    setForm({ ...EMPTY_CHILD });
-    setShowChildForm(false);
-    setEditingChildId(null);
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
   };
 
   const handleDeleteChild = async (id: string, name: string) => {
@@ -461,6 +467,11 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {childError && (
+                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", marginTop: 14, fontSize: 12, color: "#dc2626", fontWeight: 600 }}>
+                  ⚠️ {childError}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
                 <button className="btn-primary"
                   onClick={handleSaveChild}
@@ -468,7 +479,7 @@ export default function AdminPage() {
                   style={{ minWidth: 100 }}>
                   {saving ? "保存中..." : editingChildId ? "✅ 更新する" : "登録する"}
                 </button>
-                <button className="btn-secondary" onClick={() => { setShowChildForm(false); setEditingChildId(null); }}>キャンセル</button>
+                <button className="btn-secondary" onClick={() => { setShowChildForm(false); setEditingChildId(null); setChildError(""); }}>キャンセル</button>
               </div>
             </div>
           )}
