@@ -4,9 +4,9 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "@/hooks/useSession";
-import { fetchByFacility, saveRecord } from "@/lib/supabase";
-import { DUMMY_STAFF, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import type { ShiftRecord, WorkLog } from "@/types";
+import { fetchByFacility, fetchByOrg, saveRecord } from "@/lib/supabase";
+import { DUMMY_FACILITIES } from "@/lib/dummy-data";
+import type { ShiftRecord, WorkLog, Staff } from "@/types";
 // Excel出力：xlsx-js-style（枠線・色付き、純粋JSなのでVercelでも動作）
 import { todayISO, nowHHMM, genMonths, DOW } from "@/lib/utils";
 import { xlsBorder, colName } from "@/lib/excel-style";
@@ -53,15 +53,22 @@ export default function ShiftPage() {
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
   const [clockMsg, setClockMsg] = useState("");
 
+  // === 職員一覧（Supabaseから取得） ===
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+
   // データ読み込み
   useEffect(() => {
     if (!session) return;
     Promise.all([
       fetchByFacility<ShiftRecord>("ng_shifts", session.org_id, session.selected_facility_id),
       fetchByFacility<WorkLog>("ng_work_log", session.org_id, session.selected_facility_id),
-    ]).then(([s, w]) => {
+      fetchByOrg<Staff>("ng_staff", session.org_id),
+    ]).then(([s, w, staff]) => {
       setShifts(s);
       setWorkLogs(w);
+      // 施設でフィルタ、なければ全職員を表示
+      const filtered = staff.filter((st) => st.facility_id === session.selected_facility_id);
+      setStaffList(filtered.length > 0 ? filtered : staff);
       // 編集マップを初期化
       const map: Record<string, string> = {};
       s.forEach((r) => { map[`${r.staff_id}_${r.year}_${r.month}_${r.day}`] = r.shift_type; });
@@ -72,8 +79,6 @@ export default function ShiftPage() {
   if (!session) return null;
 
   const fac = DUMMY_FACILITIES.find((f) => f.id === session.selected_facility_id);
-  // この施設の職員一覧（ダミーから取得）
-  const staffList = DUMMY_STAFF.filter((s) => s.facility_id === session.selected_facility_id);
   const daysInMonth = getDaysInMonth(selYear, selMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
