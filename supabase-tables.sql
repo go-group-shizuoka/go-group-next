@@ -199,6 +199,11 @@ CREATE TABLE IF NOT EXISTS public.ng_shifts (
 ALTER TABLE public.ng_shifts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anon_all" ON public.ng_shifts FOR ALL USING (true) WITH CHECK (true);
 
+-- ==================== カラム追加マイグレーション ====================
+-- ng_staffに employment_type / emergency_contact を追加（存在しない場合のみ）
+ALTER TABLE public.ng_staff ADD COLUMN IF NOT EXISTS employment_type TEXT;
+ALTER TABLE public.ng_staff ADD COLUMN IF NOT EXISTS emergency_contact TEXT;
+
 -- 初期データ: GO GROUP法人
 INSERT INTO public.organizations (id, name, plan)
 VALUES ('org_1', 'GO GROUP', 'standard')

@@ -13,10 +13,10 @@ function getAdmin() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabaseAdmin = getAdmin();
   try {
+    const supabaseAdmin = getAdmin();
     const { login_id, password, name, role, facility_id, org_id,
-            phone, qualifications, hire_date } = await req.json();
+            phone, qualifications, hire_date, employment_type, emergency_contact } = await req.json();
 
     if (!login_id || !password || !name || !role || !facility_id) {
       return NextResponse.json({ error: "必須項目が不足しています" }, { status: 400 });
@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
         phone: phone ?? null,
         qualifications: qualifications && qualifications.length > 0 ? qualifications : null,
         hire_date: hire_date || null,
+        employment_type: employment_type || null,
+        emergency_contact: emergency_contact || null,
         created_at: new Date().toISOString(),
       });
 
