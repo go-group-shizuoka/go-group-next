@@ -20,6 +20,8 @@ type Reservation = {
   date: string;
   type: ReservationType;
   notes: string | null;
+  arrive_time?: string | null;
+  depart_time?: string | null;
   created_at: string;
 };
 
@@ -37,12 +39,16 @@ export default function ReservationsPage() {
   const [spotModal, setSpotModal] = useState(false);
   const [spotChildId, setSpotChildId] = useState("");
   const [spotNotes, setSpotNotes] = useState("");
+  const [spotArriveTime, setSpotArriveTime] = useState("");
+  const [spotDepartTime, setSpotDepartTime] = useState("");
   const [dbError, setDbError] = useState(false);
 
   // 月間一括登録用 state
   const [bulkModal, setBulkModal] = useState(false);
   const [bulkChildId, setBulkChildId] = useState("");
   const [bulkNotes, setBulkNotes] = useState("");
+  const [bulkArriveTime, setBulkArriveTime] = useState("");
+  const [bulkDepartTime, setBulkDepartTime] = useState("");
   const [bulkYear, setBulkYear] = useState(() => new Date().getFullYear());
   const [bulkMonth, setBulkMonth] = useState(() => new Date().getMonth() + 1);
   const [bulkDays, setBulkDays] = useState<Set<number>>(new Set());
@@ -203,6 +209,8 @@ export default function ReservationsPage() {
       date: selDate,
       type: "spot",
       notes: spotNotes || null,
+      arrive_time: spotArriveTime || null,
+      depart_time: spotDepartTime || null,
       created_at: new Date().toISOString(),
     };
     localUpsert(newRes);
@@ -212,6 +220,8 @@ export default function ReservationsPage() {
     setSpotModal(false);
     setSpotChildId("");
     setSpotNotes("");
+    setSpotArriveTime("");
+    setSpotDepartTime("");
     setSaving(null);
   };
 
@@ -235,6 +245,8 @@ export default function ReservationsPage() {
         date,
         type: "spot",
         notes: bulkNotes || null,
+        arrive_time: bulkArriveTime || null,
+        depart_time: bulkDepartTime || null,
         created_at: new Date().toISOString(),
       };
       newReservations.push(newRes);
@@ -496,6 +508,17 @@ CREATE POLICY "allow_all" ON ng_reservations FOR ALL USING (true);`}
                 </select>
               </div>
 
+              {/* 時間 */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>来所時間（任意）</label>
+                  <input className="form-input" type="time" value={bulkArriveTime} onChange={(e) => setBulkArriveTime(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>退所時間（任意）</label>
+                  <input className="form-input" type="time" value={bulkDepartTime} onChange={(e) => setBulkDepartTime(e.target.value)} />
+                </div>
+              </div>
               {/* メモ */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>メモ（任意）</label>
@@ -573,6 +596,17 @@ CREATE POLICY "allow_all" ON ng_reservations FOR ALL USING (true);`}
                   <option key={c.id} value={c.id}>{c.name}（{c.grade}）</option>
                 ))}
               </select>
+            </div>
+            {/* 時間入力 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>来所時間（任意）</label>
+                <input className="form-input" type="time" value={spotArriveTime} onChange={(e) => setSpotArriveTime(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>退所時間（任意）</label>
+                <input className="form-input" type="time" value={spotDepartTime} onChange={(e) => setSpotDepartTime(e.target.value)} />
+              </div>
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>メモ（任意）</label>

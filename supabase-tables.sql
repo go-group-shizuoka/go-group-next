@@ -199,6 +199,23 @@ CREATE TABLE IF NOT EXISTS public.ng_shifts (
 ALTER TABLE public.ng_shifts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anon_all" ON public.ng_shifts FOR ALL USING (true) WITH CHECK (true);
 
+-- 12. 予約管理（スポット・欠席）
+CREATE TABLE IF NOT EXISTS public.ng_reservations (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  facility_id TEXT NOT NULL,
+  child_id TEXT NOT NULL,
+  child_name TEXT,
+  date DATE NOT NULL,
+  type TEXT NOT NULL DEFAULT 'spot',   -- 'spot' | 'cancel'
+  notes TEXT,
+  arrive_time TEXT,
+  depart_time TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.ng_reservations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON public.ng_reservations FOR ALL USING (true) WITH CHECK (true);
+
 -- ==================== カラム追加マイグレーション ====================
 -- ng_staffに employment_type / emergency_contact を追加（存在しない場合のみ）
 ALTER TABLE public.ng_staff ADD COLUMN IF NOT EXISTS employment_type TEXT;

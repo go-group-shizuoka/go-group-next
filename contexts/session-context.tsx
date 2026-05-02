@@ -57,25 +57,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // ng_staffからスタッフ情報を取得（email列で検索）
+      // ng_staffからスタッフ情報を取得（5秒タイムアウト付き）
       const email = authSession.user.email ?? "";
       const username = email.split("@")[0];
-      const { data: rows } = await supabase
-        .from("ng_staff")
-        .select("*")
-        .eq("email", email)
-        .limit(1);
+      let staff = null;
+      try {
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+        const fetchStaff = supabase
+          .from("ng_staff").select("*").eq("email", email).limit(1)
+          .then(({ data }) => data?.[0] ?? null);
+        staff = await Promise.race([fetchStaff, timeout]);
+      } catch { /* ng_staffが未作成でも続行 */ }
 
-      const staff = rows?.[0] ?? null;
       const savedFacility = (() => { try { return localStorage.getItem("gg_facility_id"); } catch { return null; } })();
 
       const userSession: UserSession = {
         id: authSession.user.id,
         org_id: staff?.org_id ?? "org_1",
-        facility_id: staff?.facility_id ?? "f1",
+        // staff未登録の場合は"" にして全施設から選択させる
+        facility_id: staff?.facility_id ?? "",
         staff_id: staff?.id ?? authSession.user.id,
         name: staff?.name ?? username,
-        role: (staff?.role ?? "staff") as "admin" | "manager" | "staff",
+        role: (staff?.role ?? "admin") as "admin" | "manager" | "staff",
         selected_facility_id: savedFacility ?? staff?.facility_id ?? "f1",
       };
 

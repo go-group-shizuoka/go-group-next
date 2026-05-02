@@ -53,8 +53,8 @@ export default function Sidebar() {
     (item) => !session || item.roles.includes(session.role)
   );
 
-  // 施設一覧（adminは全施設、それ以外は自施設のみ）
-  const facilities = session?.role === "admin"
+  // 施設一覧（admin・manager・facility_id未設定は全施設、staffは自施設のみ）
+  const facilities = (session?.role === "admin" || session?.role === "manager" || !session?.facility_id)
     ? DUMMY_FACILITIES
     : DUMMY_FACILITIES.filter((f) => f.id === session?.facility_id);
 
