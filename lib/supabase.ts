@@ -19,9 +19,9 @@ export const isSupabaseReady =
 // ==================== 汎用CRUD関数 ====================
 
 // タイムアウト付きfetch（Supabaseがハングした場合に5秒でフォールバック）
-function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 5000): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, fallback: T, ms = 5000): Promise<T> {
   return Promise.race([
-    promise,
+    Promise.resolve(promise),
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
 }
