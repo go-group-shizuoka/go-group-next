@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { supabase, normalizeChild, isSupabaseReady } from "@/lib/supabase";
+import { fetchByOrg, normalizeChild } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
@@ -22,34 +22,17 @@ export default function ChildrenPage() {
   const [filterGrade, setFilterGrade] = useState("");
   const [filterSchool, setFilterSchool] = useState("");
 
-  // Supabaseから児童データ取得
+  // Supabaseから児童データ取得（5秒タイムアウト付き）
   useEffect(() => {
     if (!session) return;
-    const load = async () => {
-      setLoading(true);
-      if (!isSupabaseReady) {
-        setChildren(DUMMY_CHILDREN);
-        setLoading(false);
-        return;
-      }
-      try {
-        const { data, error } = await supabase
-          .from("ng_children")
-          .select("*")
-          .eq("org_id", session.org_id)
-          .eq("active", true)
-          .order("name");
-        if (error || !data || data.length === 0) {
-          setChildren(DUMMY_CHILDREN);
-        } else {
-          setChildren((data as Child[]).map(normalizeChild));
-        }
-      } catch {
-        setChildren(DUMMY_CHILDREN);
-      }
-      setLoading(false);
-    };
-    load();
+    setLoading(true);
+    fetchByOrg<Child>("ng_children", session.org_id)
+      .then((rows) => {
+        const active = rows.filter((c) => c.active !== false);
+        setChildren(active.length > 0 ? active.map(normalizeChild) : DUMMY_CHILDREN);
+      })
+      .catch(() => setChildren(DUMMY_CHILDREN))
+      .finally(() => setLoading(false));
   }, [session]);
 
   if (!session) return null;

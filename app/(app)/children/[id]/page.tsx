@@ -46,16 +46,19 @@ export default function ChildDetailPage() {
       setChildLoading(false);
       return;
     }
-    if (!isSupabaseReady) {
+    if (!isSupabaseReady) { setChildLoading(false); return; }
+    // 5秒タイムアウト付きでSupabaseから児童データ取得
+    (async () => {
+      try {
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+        const fetchPromise = supabase
+          .from("ng_children").select("*").eq("id", id).single()
+          .then(({ data }) => data as Child | null);
+        const data = await Promise.race([fetchPromise, timeout]);
+        if (data) setEditChild(normalizeChild(data));
+      } catch {}
       setChildLoading(false);
-      return;
-    }
-    supabase.from("ng_children").select("*").eq("id", id).single()
-      .then(({ data }) => {
-        if (data) setEditChild(normalizeChild(data as Child));
-        setChildLoading(false);
-      })
-      .catch(() => setChildLoading(false));
+    })();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 利用履歴をSupabaseから取得
