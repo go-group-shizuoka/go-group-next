@@ -9,7 +9,7 @@ import { fetchByOrg, normalizeChild } from "@/lib/supabase";
 import type { UserSession, Child } from "@/types";
 import { useSession } from "@/hooks/useSession";
 
-const DOW_LIST = ["月","火","水","木","金"];
+const DOW_LIST = ["月","火","水","木","金","土"];
 const GRADE_LIST = ["未就学","小1","小2","小3","小4","小5","小6","中1","中2","中3"];
 
 export default function ChildrenPage() {
@@ -289,7 +289,7 @@ function ChildCard({
       {/* 利用曜日 */}
       {Array.isArray(child.use_days) && child.use_days.length > 0 && (
         <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap" }}>
-          {["月","火","水","木","金"].map((d) => (
+          {["月","火","水","木","金","土"].map((d) => (
             <span
               key={d}
               style={{
