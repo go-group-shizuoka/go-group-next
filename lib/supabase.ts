@@ -18,17 +18,28 @@ export const isSupabaseReady =
 
 // ==================== 汎用CRUD関数 ====================
 
+// タイムアウト付きfetch（Supabaseがハングした場合に5秒でフォールバック）
+function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 5000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // データ取得（org_idでフィルタ）
 export async function fetchByOrg<T>(table: string, org_id: string): Promise<T[]> {
   if (!isSupabaseReady) return [];
   try {
-    const { data, error } = await supabase
+    const fetchPromise = supabase
       .from(table)
       .select("*")
       .eq("org_id", org_id)
-      .order("created_at", { ascending: false });
-    if (error) { console.error(`fetchByOrg [${table}] error:`, error); return []; }
-    return (data as T[]) ?? [];
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error(`fetchByOrg [${table}] error:`, error); return [] as T[]; }
+        return (data as T[]) ?? [];
+      });
+    return await withTimeout(fetchPromise, []);
   } catch { return []; }
 }
 
@@ -40,14 +51,17 @@ export async function fetchByFacility<T>(
 ): Promise<T[]> {
   if (!isSupabaseReady) return [];
   try {
-    const { data, error } = await supabase
+    const fetchPromise = supabase
       .from(table)
       .select("*")
       .eq("org_id", org_id)
       .eq("facility_id", facility_id)
-      .order("created_at", { ascending: false });
-    if (error) { console.error(`fetchByFacility [${table}] error:`, error); return []; }
-    return (data as T[]) ?? [];
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error(`fetchByFacility [${table}] error:`, error); return [] as T[]; }
+        return (data as T[]) ?? [];
+      });
+    return await withTimeout(fetchPromise, []);
   } catch { return []; }
 }
 
@@ -60,15 +74,18 @@ export async function fetchByDate<T>(
 ): Promise<T[]> {
   if (!isSupabaseReady) return [];
   try {
-    const { data, error } = await supabase
+    const fetchPromise = supabase
       .from(table)
       .select("*")
       .eq("org_id", org_id)
       .eq("facility_id", facility_id)
       .eq("date", date)
-      .order("created_at", { ascending: false });
-    if (error) { console.error(`fetchByDate [${table}] error:`, error); return []; }
-    return (data as T[]) ?? [];
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error(`fetchByDate [${table}] error:`, error); return [] as T[]; }
+        return (data as T[]) ?? [];
+      });
+    return await withTimeout(fetchPromise, []);
   } catch { return []; }
 }
 
@@ -101,9 +118,11 @@ export async function fetchByFacilityWhere<T>(
     for (const [k, v] of Object.entries(extra)) {
       q = q.eq(k, v);
     }
-    const { data, error } = await q;
-    if (error) { console.error(`fetchByFacilityWhere [${table}] error:`, error); return []; }
-    return (data as T[]) ?? [];
+    const fetchPromise = q.then(({ data, error }: { data: unknown; error: unknown }) => {
+      if (error) { console.error(`fetchByFacilityWhere [${table}] error:`, error); return [] as T[]; }
+      return (data as T[]) ?? [];
+    });
+    return await withTimeout(fetchPromise, []);
   } catch { return []; }
 }
 

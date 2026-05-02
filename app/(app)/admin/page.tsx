@@ -92,23 +92,31 @@ export default function AdminPage() {
   useEffect(() => {
     if (!session) return;
     // 児童読み込み（use_days等のJSONBフィールドを正規化）
-    fetchByOrg<Child>("ng_children", session.org_id).then((rows) => {
-      setChildren(rows.length > 0 ? rows.map(normalizeChild) : DUMMY_CHILDREN);
-      setLoadingChildren(false);
-    });
+    fetchByOrg<Child>("ng_children", session.org_id)
+      .then((rows) => {
+        setChildren(rows.length > 0 ? rows.map(normalizeChild) : DUMMY_CHILDREN);
+      })
+      .catch(() => setChildren(DUMMY_CHILDREN))
+      .finally(() => setLoadingChildren(false));
     // 職員読み込み（qualificationsのJSONBフィールドを正規化）
-    fetchByOrg<StaffMember>("ng_staff", session.org_id).then((rows) => {
-      if (rows.length > 0) {
-        setStaffList(rows.map((s) => ({ ...s, qualifications: toStringArray(s.qualifications) })));
-      } else {
-        setStaffList(DUMMY_STAFF.map((s) => ({
-          id: s.id, org_id: s.org_id, facility_id: s.facility_id,
-          name: s.name, role: s.role, login_id: s.id,
-          created_at: new Date().toISOString(),
-        })));
-      }
-      setLoadingStaff(false);
-    });
+    fetchByOrg<StaffMember>("ng_staff", session.org_id)
+      .then((rows) => {
+        if (rows.length > 0) {
+          setStaffList(rows.map((s) => ({ ...s, qualifications: toStringArray(s.qualifications) })));
+        } else {
+          setStaffList(DUMMY_STAFF.map((s) => ({
+            id: s.id, org_id: s.org_id, facility_id: s.facility_id,
+            name: s.name, role: s.role, login_id: s.id,
+            created_at: new Date().toISOString(),
+          })));
+        }
+      })
+      .catch(() => setStaffList(DUMMY_STAFF.map((s) => ({
+        id: s.id, org_id: s.org_id, facility_id: s.facility_id,
+        name: s.name, role: s.role, login_id: s.id,
+        created_at: new Date().toISOString(),
+      }))))
+      .finally(() => setLoadingStaff(false));
   }, [session]);
 
   if (!session) return null;
