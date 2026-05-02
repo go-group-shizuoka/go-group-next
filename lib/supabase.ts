@@ -36,7 +36,7 @@ export async function fetchByOrg<T>(table: string, org_id: string): Promise<T[]>
       .eq("org_id", org_id)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) { console.error(`fetchByOrg [${table}] error:`, error); return [] as T[]; }
+        if (error) { console.warn(`fetchByOrg [${table}] error:`, error); return [] as T[]; }
         return (data as T[]) ?? [];
       });
     return await withTimeout(fetchPromise, []);
@@ -58,7 +58,7 @@ export async function fetchByFacility<T>(
       .eq("facility_id", facility_id)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) { console.error(`fetchByFacility [${table}] error:`, error); return [] as T[]; }
+        if (error) { console.warn(`fetchByFacility [${table}] error:`, error); return [] as T[]; }
         return (data as T[]) ?? [];
       });
     return await withTimeout(fetchPromise, []);
@@ -82,7 +82,7 @@ export async function fetchByDate<T>(
       .eq("date", date)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) { console.error(`fetchByDate [${table}] error:`, error); return [] as T[]; }
+        if (error) { console.warn(`fetchByDate [${table}] error:`, error); return [] as T[]; }
         return (data as T[]) ?? [];
       });
     return await withTimeout(fetchPromise, []);
@@ -96,7 +96,7 @@ export async function saveRecord(table: string, data: Record<string, unknown>) {
     const { error } = await supabase
       .from(table)
       .upsert(data, { onConflict: "id" });
-    if (error) { console.error(`saveRecord [${table}] error:`, error); throw error; }
+    if (error) { console.warn(`saveRecord [${table}] error:`, error); throw error; }
   } catch (e) { throw e; }
 }
 
@@ -119,7 +119,7 @@ export async function fetchByFacilityWhere<T>(
       q = q.eq(k, v);
     }
     const fetchPromise = q.then(({ data, error }: { data: unknown; error: unknown }) => {
-      if (error) { console.error(`fetchByFacilityWhere [${table}] error:`, error); return [] as T[]; }
+      if (error) { console.warn(`fetchByFacilityWhere [${table}] error:`, error); return [] as T[]; }
       return (data as T[]) ?? [];
     });
     return await withTimeout(fetchPromise, []);
@@ -134,7 +134,7 @@ export async function deleteRecord(table: string, id: string) {
       .from(table)
       .delete()
       .eq("id", id);
-    if (error) { console.error(`deleteRecord [${table}] error:`, error); throw error; }
+    if (error) { console.warn(`deleteRecord [${table}] error:`, error); throw error; }
   } catch (e) { throw e; }
 }
 
@@ -151,7 +151,7 @@ export async function uploadPhoto(
     .upload(path, file, { upsert: true, contentType: file.type });
 
   if (error) {
-    console.error("uploadPhoto error:", error);
+    console.warn("uploadPhoto error:", error);
     return null;
   }
 
