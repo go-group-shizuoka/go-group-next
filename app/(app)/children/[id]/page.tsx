@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { saveRecord, supabase, normalizeChild, isSupabaseReady } from "@/lib/supabase";
+import { saveRecord, deleteRecord, supabase, normalizeChild, isSupabaseReady } from "@/lib/supabase";
 import type { Child, AttendanceRecord } from "@/types";
 
 type TabKey = "basic" | "parent" | "notes" | "support" | "history";
@@ -112,10 +112,26 @@ export default function ChildDetailPage() {
   // 保存処理
   const handleSave = async () => {
     setSavingMsg("保存中...");
-    await saveRecord("ng_children", editChild as unknown as Record<string, unknown>);
-    setSavingMsg("✓ 保存しました");
-    setIsEditing(false);
-    setTimeout(() => setSavingMsg(""), 3000);
+    try {
+      await saveRecord("ng_children", editChild as unknown as Record<string, unknown>);
+      setSavingMsg("✓ 保存しました");
+      setIsEditing(false);
+      setTimeout(() => setSavingMsg(""), 3000);
+    } catch {
+      setSavingMsg("⚠️ 保存に失敗しました。再度お試しください。");
+      setTimeout(() => setSavingMsg(""), 5000);
+    }
+  };
+
+  // 削除処理
+  const handleDelete = async () => {
+    if (!window.confirm(`「${child.name}」を削除してもよいですか？\nこの操作は元に戻せません。`)) return;
+    try {
+      await deleteRecord("ng_children", child.id);
+      router.replace("/children");
+    } catch {
+      alert("削除に失敗しました。再度お試しください。");
+    }
   };
 
   // 編集キャンセル
@@ -141,13 +157,22 @@ export default function ChildDetailPage() {
         >
           ← 児童一覧に戻る
         </button>
-        {/* 書類管理ボタン */}
-        <Link
-          href={`/children/${id}/docs`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "#0a2540", color: "white", borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
-        >
-          📄 書類管理
-        </Link>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* 削除ボタン */}
+          <button
+            onClick={handleDelete}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            🗑️ 削除
+          </button>
+          {/* 書類管理ボタン */}
+          <Link
+            href={`/children/${id}/docs`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "#0a2540", color: "white", borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
+          >
+            📄 書類管理
+          </Link>
+        </div>
       </div>
 
       {/* プロフィールバナー */}
