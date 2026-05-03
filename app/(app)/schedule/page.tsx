@@ -9,6 +9,16 @@ import type { Child, AttendanceRecord } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { DOW as DOW_JP } from "@/lib/utils";
 
+// ng_reservations の簡易型
+type Reservation = {
+  id: string;
+  child_id: string;
+  date: string;
+  type: string;
+  arrive_time?: string | null;
+  depart_time?: string | null;
+};
+
 // YYYY-MM の月全日を生成
 function buildCalendar(year: number, month: number) {
   const firstDay = new Date(year, month - 1, 1).getDay(); // 0=日
@@ -30,6 +40,7 @@ export default function SchedulePage() {
   const [selDay, setSelDay] = useState<number | null>(today.getDate());
   const [dbChildren, setDbChildren] = useState<Child[]>([]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceRecord>>({});
+  const [reservationMap, setReservationMap] = useState<Record<string, Reservation>>({});
 
   useEffect(() => {
     if (!session) return;
@@ -38,15 +49,25 @@ export default function SchedulePage() {
     });
   }, [session]);
 
-  // 選択日の入退室記録を取得
+  // 選択日の入退室記録・予約情報を取得
   useEffect(() => {
     if (!session || !selDay) return;
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(selDay).padStart(2, "0")}`;
+
+    // 入退室記録
     fetchByDate<AttendanceRecord>("ng_attendance", session.org_id, session.selected_facility_id, dateStr)
       .then((rows) => {
         const map: Record<string, AttendanceRecord> = {};
         rows.forEach((r) => { map[r.child_id] = r; });
         setAttendanceMap(map);
+      });
+
+    // 予約情報（ng_reservations）
+    fetchByDate<Reservation>("ng_reservations", session.org_id, session.selected_facility_id, dateStr)
+      .then((rows) => {
+        const map: Record<string, Reservation> = {};
+        rows.forEach((r) => { map[r.child_id] = r; });
+        setReservationMap(map);
       });
   }, [session, selDay, year, month]);
 
@@ -73,13 +94,15 @@ export default function SchedulePage() {
     setSelDay(null);
   };
 
-  // 選択日の来所予定児童（use_days一致 ＋ 入退室記録がある子も含む）
+  // 選択日の来所予定児童（use_days一致 ＋ 入退室記録/予約がある子も含む）
   const selDate = selDay ? new Date(year, month - 1, selDay) : null;
   const selChildren = selDate
     ? children.filter((c) => {
         if (scheduledOnDate(c, selDate)) return true;
-        // use_daysに登録がなくても入退室記録があれば表示
-        return !!attendanceMap[c.id];
+        if (attendanceMap[c.id]) return true;
+        // 予約（スポット利用）がある場合も表示
+        if (reservationMap[c.id] && reservationMap[c.id].type !== "cancel") return true;
+        return false;
       })
     : [];
 
@@ -173,22 +196,31 @@ export default function SchedulePage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {selChildren.map((child) => {
                     const att = attendanceMap[child.id];
+                    const res = reservationMap[child.id];
+                    // 実績（入退室記録）優先、なければ予定（予約）を表示
+                    const arriveShow = att?.arrive_time || res?.arrive_time;
+                    const departShow = att?.depart_time || res?.depart_time;
+                    const isActual = !!(att?.arrive_time || att?.depart_time);
+                    const isSpot = res?.type === "spot" && !child.use_days?.includes(DOW_JP[selDate ? selDate.getDay() : 0]);
                     return (
                     <div key={child.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }}>
                       <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#0077b6,#00b4d8)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
                         {child.name.slice(0, 1)}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{child.name}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{child.name}</span>
+                          {isSpot && <span style={{ fontSize: 9, background: "#fef9c3", color: "#854d0e", borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>スポット</span>}
+                        </div>
                         <div style={{ fontSize: 11, color: "#64748b" }}>
                           {child.grade} {child.has_transport ? "🚌送迎" : ""}
                         </div>
-                        {att && (
-                          <div style={{ fontSize: 11, color: "#0077b6", marginTop: 2, fontWeight: 600 }}>
-                            {att.arrive_time ? `来所 ${att.arrive_time}` : ""}
-                            {att.arrive_time && att.depart_time ? " ／ " : ""}
-                            {att.depart_time ? `退所 ${att.depart_time}` : ""}
-                            {att.status && att.status !== "来所" ? ` （${att.status}）` : ""}
+                        {(arriveShow || departShow) && (
+                          <div style={{ fontSize: 11, marginTop: 2, fontWeight: 600, color: isActual ? "#059669" : "#0077b6" }}>
+                            {isActual ? "✓ " : "予定 "}
+                            {arriveShow ? `来所 ${arriveShow}` : ""}
+                            {arriveShow && departShow ? " ／ " : ""}
+                            {departShow ? `退所 ${departShow}` : ""}
                           </div>
                         )}
                       </div>
