@@ -4,8 +4,8 @@
 
 import { useState, useEffect } from "react";
 import { DUMMY_CHILDREN, DUMMY_FACILITIES } from "@/lib/dummy-data";
-import { fetchChildren } from "@/lib/supabase";
-import type { Child } from "@/types";
+import { fetchChildren, fetchByDate } from "@/lib/supabase";
+import type { Child, AttendanceRecord } from "@/types";
 import { useSession } from "@/hooks/useSession";
 import { DOW as DOW_JP } from "@/lib/utils";
 
@@ -29,6 +29,7 @@ export default function SchedulePage() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [selDay, setSelDay] = useState<number | null>(today.getDate());
   const [dbChildren, setDbChildren] = useState<Child[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceRecord>>({});
 
   useEffect(() => {
     if (!session) return;
@@ -36,6 +37,18 @@ export default function SchedulePage() {
       if (rows.length > 0) setDbChildren(rows.filter((c) => c.active));
     });
   }, [session]);
+
+  // 選択日の入退室記録を取得
+  useEffect(() => {
+    if (!session || !selDay) return;
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(selDay).padStart(2, "0")}`;
+    fetchByDate<AttendanceRecord>("ng_attendance", session.org_id, session.selected_facility_id, dateStr)
+      .then((rows) => {
+        const map: Record<string, AttendanceRecord> = {};
+        rows.forEach((r) => { map[r.child_id] = r; });
+        setAttendanceMap(map);
+      });
+  }, [session, selDay, year, month]);
 
   if (!session) return null;
 
@@ -60,9 +73,15 @@ export default function SchedulePage() {
     setSelDay(null);
   };
 
-  // 選択日の来所予定児童
+  // 選択日の来所予定児童（use_days一致 ＋ 入退室記録がある子も含む）
   const selDate = selDay ? new Date(year, month - 1, selDay) : null;
-  const selChildren = selDate ? children.filter((c) => scheduledOnDate(c, selDate)) : [];
+  const selChildren = selDate
+    ? children.filter((c) => {
+        if (scheduledOnDate(c, selDate)) return true;
+        // use_daysに登録がなくても入退室記録があれば表示
+        return !!attendanceMap[c.id];
+      })
+    : [];
 
   // 日ごとの来所人数マップ
   const countMap: Record<number, number> = {};
@@ -152,19 +171,30 @@ export default function SchedulePage() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {selChildren.map((child) => (
+                  {selChildren.map((child) => {
+                    const att = attendanceMap[child.id];
+                    return (
                     <div key={child.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }}>
                       <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#0077b6,#00b4d8)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
                         {child.name.slice(0, 1)}
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{child.name}</div>
                         <div style={{ fontSize: 11, color: "#64748b" }}>
                           {child.grade} {child.has_transport ? "🚌送迎" : ""}
                         </div>
+                        {att && (
+                          <div style={{ fontSize: 11, color: "#0077b6", marginTop: 2, fontWeight: 600 }}>
+                            {att.arrive_time ? `来所 ${att.arrive_time}` : ""}
+                            {att.arrive_time && att.depart_time ? " ／ " : ""}
+                            {att.depart_time ? `退所 ${att.depart_time}` : ""}
+                            {att.status && att.status !== "来所" ? ` （${att.status}）` : ""}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, textAlign: "right" }}>
                     計 {selChildren.length}名
                   </div>
@@ -181,7 +211,7 @@ export default function SchedulePage() {
 
       {/* 凡例 */}
       <div style={{ marginTop: 16, fontSize: 12, color: "#64748b", display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <span>※ 曜日利用設定に基づく予定表です</span>
+        <span>※ 曜日利用設定に基づく予定表です。入退室記録がある場合は時間を表示します。</span>
         <span>🔵 今日 &nbsp; 🟦 選択中</span>
       </div>
     </div>
