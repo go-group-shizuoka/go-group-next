@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { href: "/schedule",     icon: "📅", label: "生徒予定表",     roles: ["admin","manager","staff"] },
   { href: "/shift",        icon: "📆", label: "シフト管理",     roles: ["admin","manager"] },
   { href: "/transport",    icon: "🚌", label: "送迎管理",       roles: ["admin","manager"] },
-  { href: "/admin",        icon: "⚙️", label: "管理画面",       roles: ["admin"] },
+  { href: "/admin",        icon: "⚙️", label: "管理画面",       roles: ["admin","manager"] },
 ];
 
 export default function Sidebar() {

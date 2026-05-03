@@ -73,6 +73,7 @@ export default function ChildrenNewPage() {
     const errs = validate();
     if (errs.length > 0) { setErrors(errs); return; }
     setSaving(true);
+    setErrors([]);
     const child: Child = {
       id: genId(),
       org_id: session.org_id,
@@ -96,9 +97,13 @@ export default function ChildrenNewPage() {
       active: true,
       created_at: new Date().toISOString(),
     };
-    await saveRecord("ng_children", child as unknown as Record<string, unknown>);
-    setSaving(false);
-    router.push("/children");
+    try {
+      await saveRecord("ng_children", child as unknown as Record<string, unknown>);
+      router.push("/children");
+    } catch {
+      setErrors(["保存に失敗しました。通信状況を確認して再度お試しください。"]);
+      setSaving(false);
+    }
   };
 
   return (
